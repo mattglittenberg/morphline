@@ -1,0 +1,88 @@
+[project]
+name = "morphline"
+version = "0.1.0"
+description = "BIDS-aware longitudinal neuroimaging derivatives pipeline"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Matt Glittenberg" }]
+dependencies = [
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "scipy>=1.14",
+    "statsmodels>=0.14",
+    "pydantic>=2.9",
+    "typer>=0.12",
+    "jinja2>=3.1",
+    "plotly>=5.24",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+morphline = "morphline.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.112",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.8",
+    "pandas-stubs>=2.2",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/morphline"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "N", "RUF", "ANN", "D"]
+ignore = [
+    "D203",   # incompatible with D211
+    "D213",   # incompatible with D212
+    "ANN401", # Any is occasionally correct at parse boundaries
+]
+# "scanner × time", "raw files → parsed files" and similar appear throughout
+# the docs and mirror BUILD_PLAN.md's own typography. Substituting ASCII would
+# make the prose worse, so the characters are allowed rather than flagged.
+allowed-confusables = ["×", "→", "≥", "≤", "−", "–"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "ANN"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+files = ["src/morphline"]
+
+[[tool.mypy.overrides]]
+module = ["statsmodels.*", "plotly.*", "scipy.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src/morphline --cov-report=term-missing"
+markers = [
+    "slow: statistical recovery tests over larger fixture sets",
+    "optional: cross-checks requiring optional dependencies",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/morphline"]

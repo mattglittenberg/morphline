@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  UV_VERSION: "0.5.11"
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
+
+  types:
+    name: types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run mypy --strict src/
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      # Coverage is measured and printed but not gated: no --cov-fail-under.
+      - run: uv run pytest -v --cov=src/morphline --cov-report=term-missing
+
+  e2e:
+    name: e2e (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+
+      # The week-2 exit criterion: a cold clone runs the whole pipeline with
+      # zero external data present.
+      - name: Run pipeline on generated fixtures
+        run: uv run morphline run --config config/test.yaml --outdir results/
+
+      # `morphline run` already exits non-zero when the funnel does not
+      # reconcile. Re-asserting the artifacts exist catches a silent no-op.
+      - name: Assert every artifact was produced
+        run: |
+          set -euo pipefail
+          for f in observations.parquet qc_observations.parquet \
+                   harmonized_observations.parquet model_results.parquet \
+                   accounting_funnel.parquet provenance.json report.html; do
+            test -s "results/$f" || { echo "missing or empty: results/$f"; exit 1; }
+          done
+
+      - name: Run the confounded regime (§3.2 regime B)
+        run: uv run morphline run --config config/confounded.yaml --outdir results-confounded/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            results/report.html
+            results-confounded/report.html
+          retention-days: 14
+
+  nf:
+    name: nextflow (docker)
+    runs-on: ubuntu-latest
+    # Not gating merges yet: the container and workflow paths cannot be
+    # verified on the arm64 development machine, so this job is the first
+    # place they run at all. It is promoted to blocking once it has proven
+    # stable, per Build.md step 10.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # amd64 only for v1.0 (§2.6). arm64 is a timeboxed follow-on.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: morphline:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Nextflow
+        run: |
+          curl -s https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+
+      - name: Run pipeline through Nextflow on fixtures
+        run: |
+          nextflow run . \
+            -profile test,docker \
+            --outdir results-nf \
+            -process.container morphline:ci \
+            -with-report results-nf/pipeline_info/execution_report.html \
+            -with-trace  results-nf/pipeline_info/execution_trace.txt \
+            -with-dag    results-nf/pipeline_info/dag.html \
+            -ansi-log false
+
+      - name: Assert Nextflow produced the report and a reconciling funnel
+        run: |
+          set -euo pipefail
+          test -s results-nf/report.html
+          test -s results-nf/accounting_funnel.parquet
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nextflow-run
+          path: |
+            results-nf/report.html
+            results-nf/pipeline_info/
+            .nextflow.log
+          retention-days: 14
+
+  publish:
+    name: publish image
+    needs: [lint, types, test, e2e]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tagged by both git SHA and semver, per §2.6.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,format=long
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

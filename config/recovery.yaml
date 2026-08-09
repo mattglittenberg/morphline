@@ -1,0 +1,69 @@
+# Larger synthetic dataset for statistical recovery tests (BUILD_PLAN §3.3).
+#
+# Regime A: site is independent of time, so harmonization should recover the
+# injected batch effects and preserve the injected biology. Sites are sized
+# above min_batch_size so the harmonization path runs unencumbered.
+dataset:
+  name: synthetic-recovery
+  version: "0.1.0"
+  adapter: synthetic
+
+fixtures:
+  seed: 424242
+  regime: A
+  n_sessions: 4
+  session_interval_years: 1.0
+  patient_fraction: 0.5
+  baseline_age_mean: 72.0
+  baseline_age_sd: 6.0
+  sites:
+    - name: site-a
+      scanner_manufacturer: Siemens
+      scanner_model: Prisma
+      field_strength_tesla: 3.0
+      n_subjects: 40
+      additive_effect: 0.03
+      multiplicative_effect: 1.04
+    - name: site-b
+      scanner_manufacturer: GE
+      scanner_model: Discovery-MR750
+      field_strength_tesla: 3.0
+      n_subjects: 40
+      additive_effect: -0.04
+      multiplicative_effect: 0.96
+    - name: site-c
+      scanner_manufacturer: Philips
+      scanner_model: Achieva
+      field_strength_tesla: 3.0
+      n_subjects: 40
+      additive_effect: 0.01
+      multiplicative_effect: 1.01
+  effects:
+    age_per_decade: -0.015
+    dx_baseline: -0.030
+    time_per_year: -0.005
+    dx_by_time_per_year: -0.015
+    random_intercept_sd: 0.040
+    random_slope_sd: 0.004
+    noise_sd: 0.015
+  planted:
+    # Recovery tests want a clean signal, so planted problems are kept low
+    # here. QC sensitivity/specificity is validated against its own fixture
+    # config in week 3.
+    qc_high_holes_fraction: 0.03
+    qc_bad_etiv_fraction: 0.01
+    qc_extreme_change_fraction: 0.0
+    missing_acquisition_fraction: 0.05
+    missing_derivative_fraction: 0.02
+    malformed_file_fraction: 0.0
+
+harmonization:
+  enabled: true
+  min_batch_size: 20
+
+analysis:
+  include_qc_status: [PASS]
+  region_set: v1
+
+report:
+  title: "morphline — statistical recovery run (regime A)"

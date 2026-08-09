@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/OWNER/morphline/main/nextflow_schema.json",
+  "title": "morphline pipeline parameters",
+  "description": "BIDS-aware longitudinal neuroimaging derivatives pipeline",
+  "type": "object",
+  "definitions": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "fa_icon": "fas fa-terminal",
+      "description": "Define where the pipeline should find input data and save output data.",
+      "required": ["outdir"],
+      "properties": {
+        "config": {
+          "type": "string",
+          "format": "file-path",
+          "mimetype": "text/yaml",
+          "description": "Path to the morphline YAML run configuration.",
+          "help_text": "Holds the fixture, QC, harmonization, analysis, and report settings. The fully resolved contents are embedded in the report's provenance block.",
+          "fa_icon": "fas fa-file-code"
+        },
+        "input": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Dataset root containing derivatives/freesurfer/.",
+          "help_text": "Omit to generate synthetic fixtures instead, which is what -profile test does. A cold clone therefore runs end to end with no external data.",
+          "fa_icon": "fas fa-folder-open"
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "default": "results",
+          "description": "Output directory for results and the HTML report.",
+          "fa_icon": "fas fa-folder-open"
+        }
+      }
+    },
+    "generic_options": {
+      "title": "Generic options",
+      "type": "object",
+      "fa_icon": "fas fa-file-import",
+      "properties": {
+        "help": {
+          "type": "boolean",
+          "description": "Display help text.",
+          "fa_icon": "fas fa-question-circle",
+          "hidden": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    { "$ref": "#/definitions/input_output_options" },
+    { "$ref": "#/definitions/generic_options" }
+  ]
+}

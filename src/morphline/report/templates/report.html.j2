@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d21; --muted: #5c6470; --line: #dfe3e8;
+    --panel: #f7f8fa; --accent: #2b5c8a; --warn: #8a5a00; --warn-bg: #fff6e0;
+    --bad: #9b2226; --bad-bg: #fdeced; --ok: #1f6f43; --ok-bg: #e8f5ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a; --fg: #e6e9ed; --muted: #9aa4b0; --line: #2b3138;
+      --panel: #1c2025; --accent: #7fb2e0; --warn: #e5b567; --warn-bg: #33290f;
+      --bad: #e88a8d; --bad-bg: #3a1d1f; --ok: #7dcfa0; --ok-bg: #16301f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .25rem; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 1.15rem; margin: 2.75rem 0 .75rem; padding-bottom: .4rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: .95rem; margin: 1.5rem 0 .5rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .05em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .875rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem;
+       text-transform: uppercase; letter-spacing: .04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; padding: 1rem 1.15rem; margin: 1rem 0; }
+  .kv { display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: .3rem 1.25rem; }
+  .kv dt { color: var(--muted); font-size: .85rem; }
+  .kv dd { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .82rem;
+           word-break: break-all; }
+  .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+           font-size: .75rem; font-weight: 600; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  .callout { border-left: 3px solid var(--accent); padding: .6rem .9rem;
+             background: var(--panel); margin: .75rem 0; font-size: .9rem; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .callout.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+  .funnel-bar { height: 1.35rem; background: var(--accent); border-radius: 3px; min-width: 2px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+        padding: .9rem; overflow-x: auto; font-size: .78rem; line-height: 1.45; }
+  ul.tight { margin: .4rem 0; padding-left: 1.2rem; }
+  ul.tight li { margin: .25rem 0; }
+  .lim { margin: .9rem 0; }
+  .lim strong { display: block; margin-bottom: .15rem; }
+  .lim p { margin: 0; color: var(--muted); font-size: .9rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>{{ title }}</h1>
+  <p class="sub">
+    morphline {{ provenance.pipeline_version }} &middot;
+    {{ provenance.dataset }} ({{ provenance.dataset_version }}) &middot;
+    {{ provenance.run_timestamp }}
+  </p>
+
+  {# ---- 1. Provenance (§2.8): a reader holding only this file must be able
+         to reconstruct the run. ---- #}
+  <h2>1. Provenance</h2>
+  <div class="panel">
+    <dl class="kv">
+      <dt>pipeline_version</dt><dd>{{ provenance.pipeline_version }}</dd>
+      <dt>git_sha</dt>
+      <dd>
+        {{ provenance.git_sha or "unavailable" }}
+        {% if provenance.git_dirty %}<span class="badge bad">dirty</span>{% endif %}
+      </dd>
+      <dt>container_image</dt><dd>{{ provenance.container_image or "not containerised" }}</dd>
+      <dt>container_digest</dt><dd>{{ provenance.container_digest or "n/a" }}</dd>
+      <dt>python_version</dt><dd>{{ provenance.python_version }}</dd>
+      <dt>platform</dt><dd>{{ provenance.platform }}</dd>
+      <dt>nextflow_version</dt><dd>{{ provenance.nextflow_version or "not run under Nextflow" }}</dd>
+      <dt>parser_version</dt><dd>{{ provenance.parser_version }}</dd>
+      <dt>freesurfer_version(s)</dt>
+      <dd>{{ provenance.freesurfer_versions | join(", ") or "none observed" }}</dd>
+      <dt>dataset</dt><dd>{{ provenance.dataset }} / {{ provenance.dataset_version }}</dd>
+      <dt>input_path</dt><dd>{{ provenance.input_path or "generated fixtures" }}</dd>
+      <dt>random_seed(s)</dt>
+      <dd>
+        {% for k, v in provenance.random_seeds.items() %}{{ k }}={{ v }} {% endfor %}
+        {% if not provenance.random_seeds %}none{% endif %}
+      </dd>
+      <dt>duration_seconds</dt>
+      <dd>{{ "%.2f"|format(provenance.duration_seconds) if provenance.duration_seconds else "n/a" }}</dd>
+    </dl>
+    <h3>Fully resolved configuration</h3>
+    <pre>{{ resolved_config }}</pre>
+  </div>
+
+  {# ---- 2. Data accounting funnel (§1.6): every drop needs a stated cause. ---- #}
+  <h2>2. Data accounting funnel</h2>
+
+  {% if reconciliation_errors %}
+  <div class="callout bad">
+    <strong>Funnel does not reconcile.</strong> Unexplained loss is a bug, not a
+    rounding error.
+    <ul class="tight">
+      {% for err in reconciliation_errors %}<li>{{ err }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="callout">
+    <span class="badge ok">reconciles exactly</span>
+    Every drop below has a stated cause.
+  </div>
+  {% endif %}
+
+  {% set max_count = funnel | map(attribute='count') | max %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Boundary</th><th>Unit</th><th class="num">Count</th>
+        <th class="num">Lost</th><th>Causes</th><th style="width:22%">&nbsp;</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in funnel %}
+      <tr>
+        <td>{{ row.boundary }}</td>
+        <td>{{ row.unit }}</td>
+        <td class="num">{{ row.count }}</td>
+        <td class="num">
+          {% if row.lost %}<span class="badge warn">{{ row.lost }}</span>{% else %}0{% endif %}
+        </td>
+        <td>{{ row.causes or "—" }}</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: {{ (100 * row.count / max_count) if max_count else 0 }}%"></div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if parse_failures %}
+  <h3>Parse failures by reason code</h3>
+  <table>
+    <thead><tr><th>Reason code</th><th class="num">Files</th></tr></thead>
+    <tbody>
+      {% for code, n in parse_failures.items() %}
+      <tr><td>{{ code }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if missingness %}
+  <h3>Missingness by cause</h3>
+  <table>
+    <thead><tr><th>Cause</th><th class="num">Sessions</th></tr></thead>
+    <tbody>
+      {% for cause, n in missingness.items() %}
+      <tr><td>{{ cause }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h3>Metadata coverage</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Field</th><th>Distribution</th></tr></thead>
+    <tbody>
+      {% for field, counts in metadata_coverage.items() %}
+      <tr>
+        <td>{{ field }}</td>
+        <td>
+          {% for k, v in counts.items() %}{{ k }}: {{ v }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+          {% if not counts %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if batch_sizes %}
+  <h3>Batch sizes</h3>
+  <table>
+    <thead><tr><th>Site</th><th class="num">Subjects</th><th class="num">Observations</th></tr></thead>
+    <tbody>
+      {% for site, n in batch_sizes.get('subjects_per_site', {}).items() %}
+      <tr>
+        <td>{{ site }}</td>
+        <td class="num">{{ n }}</td>
+        <td class="num">{{ batch_sizes.get('observations_per_site', {}).get(site, 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if accounting_notes %}
+  <div class="callout warn">
+    <ul class="tight">
+      {% for note in accounting_notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ---- 3. QC (§2.4) ---- #}
+  <h2>3. Quality control</h2>
+  <div class="callout warn">
+    <strong>v0.1.0 stub.</strong> No QC checks are implemented, so every
+    observation is marked PASS. The three-level status model, the flag
+    structure, and the analysis-inclusion policy are already in place; week 3
+    fills in the checks and the sensitivity/specificity validation.
+  </div>
+  {% if qc_summary and qc_summary.by_status %}
+  <table>
+    <thead><tr><th>Status</th><th class="num">Observations</th></tr></thead>
+    <tbody>
+      {% for status, n in qc_summary.by_status.items() %}
+      <tr><td>{{ status }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# ---- 4. Harmonization (§2.3) ---- #}
+  <h2>4. Harmonization diagnostics</h2>
+
+  {% if confound %}
+  <div class="callout {{ 'bad' if not confound.interpretable else '' }}">
+    <strong>Scanner &times; time confounding: {{ confound.severity }}.</strong>
+    {{ confound.message }}
+  </div>
+  <dl class="kv">
+    <dt>site explains var(time)</dt><dd>{{ "%.3f"|format(confound.max_site_time_r2) }}</dd>
+    <dt>site/time correlation</dt><dd>{{ "%.3f"|format(confound.correlation) }}</dd>
+    <dt>longitudinal estimates</dt>
+    <dd>
+      {% if confound.interpretable %}
+        <span class="badge ok">interpretable with stated caveats</span>
+      {% else %}
+        <span class="badge bad">NOT interpretable as biology</span>
+      {% endif %}
+    </dd>
+  </dl>
+  {% endif %}
+
+  {% if confound_crosstab %}
+  <h3>Site &times; time-from-baseline crosstab</h3>
+  <div class="scroll">{{ confound_crosstab | safe }}</div>
+  {% endif %}
+
+  {% if small_batches %}
+  <h3>Batches below min_batch_size</h3>
+  <p class="sub">
+    Reported, never silently dropped. The threshold is a conservative
+    engineering default for stability, not a methodological law — adequacy
+    depends on the number of batches, covariate balance within batch, outcome
+    variance, and the magnitude of the batch effect relative to it.
+  </p>
+  <table>
+    <thead><tr><th>Batch</th><th class="num">Subjects</th></tr></thead>
+    <tbody>
+      {% for batch, n in small_batches.items() %}
+      <tr><td>{{ batch }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if harmonization_notes %}
+  <div class="callout">
+    <ul class="tight">
+      {% for note in harmonization_notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ---- 5. Model results (§2.5) ---- #}
+  <h2>5. Model results</h2>
+  <div class="callout warn">
+    <strong>Sensitivity analysis, not validated biological inference.</strong>
+    Harmonized and unharmonized estimates show how conclusions depend on the
+    harmonization assumption; they do not establish which is correct.
+  </div>
+
+  <dl class="kv">
+    <dt>specification</dt>
+    <dd>value ~ age_baseline + time + dx_baseline + time:dx_baseline + sex + etiv_baseline</dd>
+    <dt>random effects</dt><dd>intercept + slope on time, grouped by subject_id</dd>
+    <dt>primary family size</dt><dd>{{ model.family_size }} test(s)</dd>
+    <dt>FDR alpha</dt><dd>{{ model.fdr_alpha }}</dd>
+    <dt>convergence rate</dt><dd>{{ "%.0f%%"|format(100 * model.convergence_rate) }}</dd>
+    <dt>modeled observations</dt><dd>{{ model.n_modeled_observations }}</dd>
+  </dl>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th><th>Measure</th><th class="num">N obs</th><th class="num">N subj</th>
+        <th>Converged</th><th class="num">Estimate</th><th class="num">SE</th>
+        <th class="num">p</th><th class="num">q</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in model_rows %}
+      <tr>
+        <td>{{ row.region }}</td>
+        <td>{{ row.measure_type }}</td>
+        <td class="num">{{ row.n_observations }}</td>
+        <td class="num">{{ row.n_subjects }}</td>
+        <td>
+          {% if row.converged %}<span class="badge ok">yes</span>
+          {% else %}<span class="badge bad">no</span>{% endif %}
+        </td>
+        <td class="num">{{ "%.4f"|format(row.estimate) if row.estimate is not none else "—" }}</td>
+        <td class="num">{{ "%.4f"|format(row.std_error) if row.std_error is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(row.p_value) if row.p_value is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(row.q_value) if row.q_value is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="sub">
+    Estimate and p-value are for the <code>time &times; diagnosis</code>
+    interaction — the primary hypothesis. Hemispheres are independent tests and
+    are counted in the multiplicity family.
+  </p>
+
+  {% if model.notes %}
+  <div class="callout">
+    <ul class="tight">
+      {% for note in model.notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ---- 6. Limitations ----
+     Standing limitations are presentation text and live here rather than in
+     report.py, so that naming input-format specifics does not drag format
+     vocabulary into a downstream stage module (§1.4). Run-dependent findings
+     are supplied by the stage. ---- #}
+  <h2>6. Limitations</h2>
+
+  {% for item in dynamic_limitations %}
+  <div class="lim">
+    <strong>{{ item.title }}</strong>
+    <p>{{ item.body }}</p>
+  </div>
+  {% endfor %}
+
+  <div class="lim">
+    <strong>Walking skeleton, not a validated analysis</strong>
+    <p>
+      This is v0.1.0. QC marks every observation PASS, harmonization is an
+      identity transform, and the model fits a single region. No number in
+      this report should be read as a finding.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>pybids is not a derivatives parser</strong>
+    <p>
+      pybids indexes raw BIDS well, but its BIDS-Derivatives support is
+      partial, and FreeSurfer's native subject-directory output is not
+      BIDS-organized at all. morphline uses a purpose-built resolver for
+      FreeSurfer conventions and reserves pybids for raw layout traversal
+      inside adapters.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Harmonized results are sensitivity analysis, not inference</strong>
+    <p>
+      Running harmonized and unharmonized models shows how conclusions depend
+      on the harmonization assumption. It does not establish which is correct.
+      Where scanner is confounded with time, the biological longitudinal
+      effect and the scanner effect are not identifiable from the observed
+      data alone — a property of the study design, not a deficiency in the
+      software.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Missingness is assumed missing-at-random</strong>
+    <p>
+      Mixed-effects models use all available observations and handle
+      unbalanced longitudinal designs naturally, but validity rests on a MAR
+      assumption. That assumption is questionable in aging cohorts, where
+      dropout can be caused by the disease progression under study, and where
+      QC failure is plausibly associated with atrophy severity and motion.
+      v1 does not attempt MNAR modeling — no pattern-mixture models, selection
+      models, or joint dropout modeling.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Synthetic data only</strong>
+    <p>
+      These results come from synthetic fixtures with injected ground truth.
+      That validates <em>statistical recovery</em> — whether the methods
+      recover known truth — and cannot validate that the parser handles real
+      headers and real metadata. Those are different questions, and both are
+      needed. Real-data integration is a later milestone.
+    </p>
+  </div>
+
+  <footer>
+    Generated by morphline {{ provenance.pipeline_version }}. This report is
+    self-contained: it fetches no external assets and can be archived or read
+    offline.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# pipeline outputs
+work/
+results/
+.nextflow/
+.nextflow.log*
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/

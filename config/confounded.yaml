@@ -1,0 +1,57 @@
+# Regime B: site confounded with time (BUILD_PLAN §3.2).
+#
+# Subjects migrate onto a later scanner partway through follow-up, exactly as
+# happens when a site replaces its hardware mid-study. Harmonization should
+# visibly attenuate the longitudinal effect here, and the Regime B test
+# asserts that it does.
+#
+# This configuration failing loudly is the CORRECT result. Where scanner is
+# confounded with time, the biological and scanner effects are not
+# identifiable from the observed data alone — that is a property of the study
+# design, not a deficiency in the software (§2.3.1). Demonstrating the failure
+# mode is a stronger artifact than a suite where everything passes.
+dataset:
+  name: synthetic-confounded
+  version: "0.1.0"
+  adapter: synthetic
+
+fixtures:
+  seed: 991155
+  regime: B
+  n_sessions: 4
+  session_interval_years: 1.0
+  patient_fraction: 0.5
+  sites:
+    - name: scanner-old
+      scanner_manufacturer: Siemens
+      scanner_model: TrioTim
+      field_strength_tesla: 3.0
+      n_subjects: 40
+      additive_effect: 0.0
+      multiplicative_effect: 1.0
+    - name: scanner-new
+      scanner_manufacturer: Siemens
+      scanner_model: Prisma
+      field_strength_tesla: 3.0
+      n_subjects: 40
+      # A step change large enough to rival the biological signal, which is
+      # what makes the two non-identifiable.
+      additive_effect: 0.05
+      multiplicative_effect: 1.05
+  effects:
+    dx_by_time_per_year: -0.015
+    noise_sd: 0.015
+  planted:
+    qc_extreme_change_fraction: 0.0
+    malformed_file_fraction: 0.0
+
+harmonization:
+  enabled: true
+  min_batch_size: 20
+
+analysis:
+  include_qc_status: [PASS]
+  region_set: v1
+
+report:
+  title: "morphline — confounded run (regime B)"

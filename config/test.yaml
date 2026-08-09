@@ -1,0 +1,60 @@
+# Tiny fixture set for CI and fast local iteration.
+# Runs the full pipeline in seconds with no external data.
+dataset:
+  name: synthetic-v1
+  version: "0.1.0"
+  adapter: synthetic
+
+fixtures:
+  # This seed is chosen, not arbitrary: at this fixture size it is verified to
+  # plant at least one missing_acquisition, one missing_derivative, and two
+  # distinct fatal parse-failure codes. A default CI run where nothing is ever
+  # lost would exercise none of the funnel's attribution logic, and a funnel
+  # that only reconciles because it has nothing to reconcile proves nothing.
+  seed: 20260800
+  regime: A
+  n_sessions: 3
+  session_interval_years: 1.0
+  patient_fraction: 0.5
+  planted:
+    # Elevated relative to the defaults so the loss paths fire reliably at
+    # 16 subjects rather than depending on a lucky draw.
+    missing_acquisition_fraction: 0.10
+    missing_derivative_fraction: 0.08
+    malformed_file_fraction: 0.08
+    qc_high_holes_fraction: 0.10
+    qc_bad_etiv_fraction: 0.06
+    qc_extreme_change_fraction: 0.06
+  sites:
+    - name: site-a
+      scanner_manufacturer: Siemens
+      scanner_model: Prisma
+      field_strength_tesla: 3.0
+      n_subjects: 8
+      additive_effect: 0.02
+      multiplicative_effect: 1.03
+    - name: site-b
+      scanner_manufacturer: GE
+      scanner_model: Discovery-MR750
+      field_strength_tesla: 3.0
+      n_subjects: 8
+      additive_effect: -0.03
+      multiplicative_effect: 0.97
+
+qc:
+  enabled: true
+
+harmonization:
+  enabled: true
+  # Both fixture sites are below this, on purpose: the small-batch reporting
+  # path should be exercised by the default CI run, not only by a special case.
+  min_batch_size: 20
+  small_batch_policy: report_and_exclude
+
+analysis:
+  include_qc_status: [PASS]
+  region_set: v1
+  fdr_alpha: 0.05
+
+report:
+  title: "morphline — synthetic test run"

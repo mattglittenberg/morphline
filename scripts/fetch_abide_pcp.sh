@@ -14,12 +14,21 @@
 # evidence distinguishing "acquired, derivative missing" from "never acquired",
 # and deleting it makes the adapter unable to tell the two apart.
 #
+# The phenotypic table is fetched too, and is not optional in practice. The
+# stats files carry no age, sex, or diagnosis, so without it those covariates
+# are null and harmonization cannot preserve them. It is also the participant
+# roster: it lists all 1112, which is what lets the four empty subjects be
+# attributed in the accounting funnel rather than silently absent.
+#
 # Usage:
-#   scripts/fetch_abide_pcp.sh [--outdir DIR] [--subjects FILE] [--all-tables]
+#   scripts/fetch_abide_pcp.sh [--outdir DIR] [--subjects FILE]
+#                              [--phenotypic FILE] [--all-tables]
 #
 #   --outdir DIR      destination (default: data/abide_pcp)
 #   --subjects FILE   subject list, one per line; generated if absent
 #                     (default: data/subjects.txt)
+#   --phenotypic FILE phenotypic table destination
+#                     (default: data/Phenotypic_V1_0b_preprocessed1.csv)
 #   --all-tables      fetch all 10 stats files per subject (~67 MB) instead of
 #                     the three the 28-test region set needs
 
@@ -30,7 +39,13 @@ PREFIX="data/Projects/ABIDE_Initiative/Outputs/freesurfer/5.1"
 
 OUTDIR="data/abide_pcp"
 SUBJECTS="data/subjects.txt"
+PHENOTYPIC="data/Phenotypic_V1_0b_preprocessed1.csv"
 TABLES="aseg.stats lh.aparc.stats rh.aparc.stats"
+
+# The preprocessed subset's phenotypic table, one row per subject directory in
+# the bucket. Deliberately not the full ABIDE I release table, whose roster
+# does not line up with what PCP actually processed.
+PHENO_URL="$S3_ROOT/data/Projects/ABIDE_Initiative/Phenotypic_V1_0b_preprocessed1.csv"
 
 # Verified 2026-08-10 by listing the bucket: 1112 subject directories, 1103
 # complete, 9 incomplete. Hard-coding them lets the script tell an expected
@@ -41,14 +56,15 @@ LH_ONLY_SUBJECTS="UCLA_51244 UCLA_51310 UM_1_0050309 UM_1_0050323 UM_1_0050328"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --outdir)   OUTDIR="$2"; shift 2 ;;
-    --subjects) SUBJECTS="$2"; shift 2 ;;
+    --outdir)     OUTDIR="$2"; shift 2 ;;
+    --subjects)   SUBJECTS="$2"; shift 2 ;;
+    --phenotypic) PHENOTYPIC="$2"; shift 2 ;;
     --all-tables)
       TABLES="aseg.stats lh.aparc.stats rh.aparc.stats lh.aparc.a2009s.stats \
 rh.aparc.a2009s.stats lh.BA.stats rh.BA.stats lh.entorhinal_exvivo.stats \
 rh.entorhinal_exvivo.stats wmparc.stats"
       shift ;;
-    -h|--help) sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '3,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -60,17 +76,46 @@ is_listed() {
   return 1
 }
 
-# The data is CC BY-NC-SA and must not reach a public repo by accident.
+# The data is CC BY-NC-SA and must not reach a public repo by accident. The
+# phenotypic table carries participant age, sex, and diagnosis, so it is the
+# more sensitive of the two and is checked alongside the stats tree.
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  if ! git check-ignore -q "$OUTDIR" 2>/dev/null; then
-    echo "WARNING: $OUTDIR is not gitignored." >&2
-    echo "         ABIDE PCP is CC BY-NC-SA; add it before committing:" >&2
-    echo "           printf '\\ndata/\\n' >> .gitignore" >&2
-    echo >&2
+  for guarded in "$OUTDIR" "$PHENOTYPIC"; do
+    if ! git check-ignore -q "$guarded" 2>/dev/null; then
+      echo "WARNING: $guarded is not gitignored." >&2
+      echo "         ABIDE PCP is CC BY-NC-SA; add it before committing:" >&2
+      echo "           printf '\\ndata/\\n' >> .gitignore" >&2
+      echo >&2
+    fi
+  done
+fi
+
+mkdir -p "$OUTDIR" "$(dirname "$SUBJECTS")" "$(dirname "$PHENOTYPIC")"
+
+if [ -s "$PHENOTYPIC" ]; then
+  echo "Phenotypic table: $PHENOTYPIC (already present)"
+else
+  echo "Fetching phenotypic table -> $PHENOTYPIC"
+  if ! curl -sfS --retry 3 --retry-delay 1 --max-time 120 "$PHENO_URL" -o "$PHENOTYPIC"; then
+    rm -f "$PHENOTYPIC"
+    echo "ERROR: could not fetch the phenotypic table from" >&2
+    echo "         $PHENO_URL" >&2
+    echo "       Without it age, sex, and diagnosis are null, and the four" >&2
+    echo "       empty subjects cannot be attributed in the funnel." >&2
+    exit 1
   fi
 fi
 
-mkdir -p "$OUTDIR" "$(dirname "$SUBJECTS")"
+# The roster is load-bearing for the accounting funnel, so a truncated or
+# reshaped download must fail here rather than surface later as missing
+# subjects that look like a dataset property.
+pheno_rows=$(($(grep -c . "$PHENOTYPIC") - 1))
+echo "Phenotypic rows:  $pheno_rows (expected $EXPECTED_SUBJECTS)"
+if [ "$pheno_rows" -ne "$EXPECTED_SUBJECTS" ]; then
+  echo "NOTE: phenotypic row count differs from the verified figure; the" >&2
+  echo "      published table may have changed." >&2
+fi
+echo
 
 if [ ! -s "$SUBJECTS" ]; then
   echo "Building subject list -> $SUBJECTS"

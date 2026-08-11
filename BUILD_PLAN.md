@@ -4,6 +4,7 @@
 If a week slips, cut scope, not the date. Cut order is defined in §7.
 
 *Revision 2 — methodological and architectural corrections applied. Scope unchanged.*
+*Revision 3 (2026-08-09) — dataset strategy changed: OASIS-3 dropped (institutional registration), Track B is now OpenNeuro, IXI added as a stretch harmonization target. §0.3, §1.2, §1.3, §1.4, §1.5, §3.4, §4, §5.1, §5.3, §6, §7, §8 touched. Scope and ship date unchanged.*
 
 ---
 
@@ -24,17 +25,19 @@ Do not develop against real data. Build the synthetic stats-file generator in we
 
 This is not a compromise — it's the stronger engineering story. It forces the ingestion boundary to be a real interface, it makes CI possible, and it lets you write *statistical* validation tests (§3) that you cannot write against real data because you don't know ground truth.
 
-### 0.3 The MVP is explicit, and it does not depend on OASIS-3
+### 0.3 The MVP is explicit, and it does not depend on any gated dataset
 
 **v1.0 = a complete synthetic longitudinal pipeline with statistical recovery tests, plus one real cross-sectional dataset (ABIDE) validating the parser, adapter, QC, and harmonization stages, plus documented longitudinal real-data integration as a named subsequent target.**
 
 None of the following are on the critical path:
-- OASIS-3 access
+- longitudinal real-data access
 - whole-brain region coverage
 - a longitudinal ComBat implementation
 - sophisticated or exhaustive QC
 
-If OASIS-3 arrives in time, longitudinal real-data integration becomes a v1.0 bonus. If it does not, v1.0 ships anyway with the longitudinal path validated against synthetic ground truth and the real-data gap stated plainly in the README. **A clearly documented limitation is a stronger portfolio signal than a missed ship date.**
+*Revision 3 supersedes OASIS-3 here.* OASIS-3 requires institutional registration, which no individual can satisfy on a 6-week timeline, so it is out of scope entirely rather than a slow-arriving bonus. Track B is now a public OpenNeuro accession (§1.3), gated on the §1.2 audit rather than on anyone's approval.
+
+If a qualifying OpenNeuro accession is found, longitudinal real-data integration becomes a v1.0 bonus. If it is not, v1.0 ships anyway with the longitudinal path validated against synthetic ground truth and the real-data gap stated plainly in the README. **A clearly documented limitation is a stronger portfolio signal than a missed ship date.**
 
 ---
 
@@ -62,6 +65,8 @@ find dsXXXXXX -maxdepth 2 -name "ses-*" -type d | wc -l
 
 Accept a dataset only if you can locate actual `aseg.stats` / `aparc.stats` text files, not just a `derivatives/` directory that turns out to hold MRIQC or fMRIPrep output.
 
+**This audit is now on the critical path for Track B**, not a nicety — it is the only gate between the pipeline and longitudinal real data. A candidate accession must clear all three: ≥2 structural sessions per subject for a usable number of subjects, locatable FreeSurfer `.stats` files, and enough scanner or site variation to be worth harmonizing. Datasets failing only the third are still worth taking; that just makes them a longitudinal-only target. If nothing clears the first two within the timebox, stop looking and ship synthetic-only — that is the §0.3 outcome, not a failure.
+
 ### 1.3 Two validation tracks, clearly labelled
 
 **Track A — cross-sectional harmonization and parser/integration validation: ABIDE I.**
@@ -69,16 +74,27 @@ FreeSurfer 6 stats for ~1035 subjects across 17 sites, already reprocessed and r
 
 What ABIDE validates: the FreeSurfer parser against real files, the dataset adapter, cross-sectional QC, cross-sectional ComBat, data accounting at real scale.
 
+ABIDE is unaffected by the access problem that removed OASIS-3: the reprocessed stats are redistributable and carry no institutional gate, so Track A is downloadable by one person today. That is why it stays Track A even though IXI is the better harmonization design (below).
+
 **What ABIDE cannot validate: anything longitudinal.** It cannot exercise longitudinal QC rules, within-subject slope estimation, longitudinal ComBat, or the scanner/time confound. Do not describe a successful ABIDE run as validating the pipeline end to end. Say "cross-sectional real-data integration" and mean it.
 
-**Track B — longitudinal analysis validation: OASIS-3 (preferred), synthetic (guaranteed).**
-OASIS-3 is 1378 participants / 2842 MR sessions, many with FreeSurfer volumetric segmentation, spanning 30 years and multiple scanners — longitudinal *and* multi-scanner, the only realistic single-source answer to both requirements. Access via NITRC-IR with a DUA; budget 1–3 weeks, not "days."
+One caveat to carry into §2.3: ABIDE's diagnosis distribution varies by site, so site effect and case-mix are entangled. Covariate-preserving ComBat is the mitigation, but a residual site effect in ABIDE is not cleanly attributable to the scanner. This is the specific weakness IXI would fix.
 
-Until and unless OASIS-3 lands, the longitudinal path is validated against synthetic fixtures with injected ground truth. That is a legitimate validation dimension, not a placeholder — it tests things real data cannot, because real data has no known true slope.
+**Track B — longitudinal analysis validation: OpenNeuro (preferred), synthetic (guaranteed).**
+A public OpenNeuro accession with ≥2 structural sessions per subject, selected by the §1.2 audit. OpenNeuro is `datalad clone`-able immediately, mostly CC0, and requires no agreement with anyone — the access risk is replaced by a *fit* risk, which the audit resolves in an afternoon instead of over weeks.
 
-**Apply for OASIS-3 on day 1.** Then forget about it until it arrives.
+The trade is deliberate and it is not free. No single OpenNeuro accession matches OASIS-3's 1378 participants / 2842 sessions across 30 years, and most accessions ship raw images with no FreeSurfer derivatives at all. Expect a smaller dataset, expect fewer sessions per subject, and expect the scanner variation to be thin or absent — a single-site longitudinal accession still validates the longitudinal path, it just cannot exercise the scanner/time confound on real data. Say which of the two it validated; do not let "real longitudinal data" imply both.
 
-**OpenNeuro:** a third adapter target if the day-1 audit finds a usable accession. Its value is proving the adapter abstraction wasn't accidental. Not critical path.
+**Why not OASIS-3.** It requires institutional registration, which an individual cannot satisfy. It is not a slow bonus to be waited on — it is out of scope for v1.0 and stays a named post-ship target (§6).
+
+Until and unless a qualifying accession is found, the longitudinal path is validated against synthetic fixtures with injected ground truth. That is a legitimate validation dimension, not a placeholder — it tests things real data cannot, because real data has no known true slope. It also remains the *only* substrate that exercises the regime B scanner/time confound against known truth.
+
+**Stretch — dedicated harmonization dataset: IXI.**
+IXI is ~600 healthy subjects across three scanners (Philips 3T at Hammersmith, Philips 1.5T at Guy's, GE 1.5T at the Institute of Psychiatry), CC BY-SA 3.0, no registration of any kind. On design it is a better harmonization substrate than ABIDE: scanner differences without a diagnosis distribution varying alongside them, so a batch effect is unambiguously a batch effect.
+
+**It ships NIfTI images only — no FreeSurfer derivatives.** morphline ingests `.stats` files, so IXI is not a swap-in: it requires either locating a third-party FreeSurfer deposit or running `recon-all` on ~600 subjects at roughly 8 hours each. Neither belongs on a 6-week critical path. IXI is therefore a **stretch target contingent on the §1.2 audit locating usable derivatives**, and ABIDE remains Track A regardless of the outcome. Do not start recon-all compute during weeks 1–6.
+
+Its value if it lands is a clean scanner-effect story and proof that the adapter abstraction wasn't accidental — the same value a third OpenNeuro accession would provide, at higher cost and higher quality.
 
 ### 1.4 Architecture: parsing and entity resolution are separate concerns
 
@@ -97,7 +113,7 @@ canonical observations (Parquet)
 ```
 
 - **`FreeSurferStatsParser`** handles header `# Measure` lines, `# ColHeaders`, whitespace-delimited numeric rows, FreeSurfer 5.3 / 6 / 7 differences, extra and missing columns, and malformed input. One parser, all datasets.
-- **`DatasetAdapter`** (synthetic / ABIDE / OASIS-3 / OpenNeuro) resolves subject IDs, session IDs, site, scanner, field strength, dates, and demographics. Four adapters, one parser.
+- **`DatasetAdapter`** (synthetic / ABIDE / OpenNeuro, plus IXI if §1.3's stretch lands) resolves subject IDs, session IDs, site, scanner, field strength, dates, and demographics. Three to four adapters, one parser.
 
 **Architectural rule, stated explicitly in the README and enforced by module boundaries: everything downstream of ingestion reads only the canonical schema.** QC, harmonization, modeling, and reporting must never import the parser, never touch a `.stats` file, and never contain a FreeSurfer-specific string. Adding a fifth dataset should require zero changes downstream of the adapter layer.
 
@@ -107,7 +123,7 @@ Long format, one row per subject × session × region × measure. Parquet on dis
 
 ```
 # identity
-dataset                 # e.g. "abide-i", "oasis-3", "synthetic-v1"
+dataset                 # e.g. "abide-i", "openneuro-dsXXXXXX", "synthetic-v1"
 dataset_version         # accession version / release tag / fixture seed
 subject_id
 session_id
@@ -541,7 +557,7 @@ Do not conflate these in the README or in CI:
 | Dimension | Question | Substrate | Verdict |
 |---|---|---|---|
 | **Statistical recovery** | Do the methods recover known truth? | Synthetic fixtures | Numeric tolerances, pass/fail in CI |
-| **Real-data integration** | Does the pipeline handle real files and real metadata? | ABIDE (cross-sectional), OASIS-3 (longitudinal, if available) | Accounting checks and sanity criteria (§5.2) |
+| **Real-data integration** | Does the pipeline handle real files and real metadata? | ABIDE (cross-sectional), OpenNeuro accession (longitudinal, if the §1.2 audit finds one) | Accounting checks and sanity criteria (§5.2) |
 
 Synthetic recovery cannot prove the parser handles real headers. Real-data integration cannot prove the model recovers a true slope. You need both, and they answer different questions.
 
@@ -550,7 +566,7 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 ## 4. Week-by-week
 
 ### Week 1 — Access, parser, adapters, fixtures
-- [ ] **Day 1:** OASIS-3 DUA submitted. Dataset audit script run. Repo initialized, licensed, README skeleton written *aspirationally*.
+- [ ] **Day 1:** §1.2 dataset audit run against candidate OpenNeuro accessions — this is the access task now, and it either resolves in an afternoon or Track B is synthetic-only. Repo initialized, licensed, README skeleton written *aspirationally*.
 - [ ] Canonical schema defined (§1.5). This is the contract; changing it later is expensive.
 - [ ] `FreeSurferStatsParser` — structure only, no dataset knowledge (§1.4).
 - [ ] `DatasetAdapter` interface + synthetic adapter.
@@ -585,7 +601,7 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 - [ ] Batch-effect recovery, biological preservation, and non-attenuation tests on fixtures (§2.3.2).
 - [ ] Regime B (confounded) test asserting the expected attenuation.
 - [ ] Real-data sanity checks per §5.2.
-- [ ] If OASIS-3 has arrived: OASIS-3 adapter. If not: proceed, and note it.
+- [ ] If the §1.2 audit found a qualifying OpenNeuro accession: OpenNeuro adapter. If not: proceed, and note it.
 
 **Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks.
 
@@ -622,7 +638,7 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 7. One published, clickable HTML report — synthetic (§5.3).
 8. README documents: the non-identifiability problem, the sensitivity-vs-inference distinction, the MAR assumption, the region-set choice, and the FDR family.
 
-Longitudinal real-data integration is **desirable, not required**. If OASIS-3 arrived, include it and celebrate. If not, the README says so.
+Longitudinal real-data integration is **desirable, not required**. If the §1.2 audit found a qualifying OpenNeuro accession, include it and celebrate — and state which of longitudinal-path and scanner/time confound it actually exercised (§1.3). If not, the README says so.
 
 ### 5.2 Real-data integration criteria (replaces "it ran through")
 
@@ -639,7 +655,7 @@ A real-data run passes only if all of these are checked and reported:
 
 ### 5.3 The public example report must be synthetic
 
-The report published to GitHub Pages is **generated entirely from synthetic fixtures**, unless redistribution of real-data-derived results is explicitly permitted by that dataset's terms. Do not build the public artifact around OASIS-3 or any restricted dataset.
+The report published to GitHub Pages is **generated entirely from synthetic fixtures**, unless redistribution of real-data-derived results is explicitly permitted by that dataset's terms. Do not build the public artifact around any dataset whose terms you have not read — and note that CC0/CC BY-SA terms on OpenNeuro and IXI make this *permitted* rather than *advisable*: the synthetic report is still the better demo, for the reasons below.
 
 This is not a limitation — the synthetic report is arguably the better demo. It can show the injected ground truth alongside the recovered estimates, the QC confusion matrix, the harmonization recovery diagnostics under both regimes, and the full accounting funnel. A real-data report can show none of that, because real data has no known truth. And it carries zero licensing or DUA exposure.
 
@@ -648,9 +664,11 @@ This is not a limitation — the synthetic report is arguably the better demo. I
 ## 6. Post-ship roadmap (the public commit history)
 
 - Longitudinal ComBat implementation (Python port of Beer et al. 2020) — the headline
-- OASIS-3 longitudinal integration, if not already in v1.0
+- Longitudinal real-data integration, if no qualifying OpenNeuro accession made v1.0
+- IXI adapter with a FreeSurfer derivation run — the clean three-scanner harmonization story, once ~600 × `recon-all` is affordable off the critical path
+- OASIS-3, if institutional affiliation ever makes the registration possible — still the best single longitudinal multi-scanner source, just not obtainable by an individual
 - Whole-region mode promoted from flag to fully supported, with its own multiplicity treatment
-- Additional adapters (OpenNeuro accessions, CAT12, FastSurfer)
+- Additional adapters (further OpenNeuro accessions, CAT12, FastSurfer)
 - Sensitivity specifications from §2.5.1: time-varying eTIV, time-varying diagnosis, non-linear time
 - Missingness sensitivity analyses (pattern-mixture / selection models)
 - `nf-core` template compliance + lint passing
@@ -662,7 +680,7 @@ This is not a limitation — the synthetic report is arguably the better demo. I
 ## 7. Cut order (invoke when a week slips)
 
 1. **Harmonization implementation** — keep the §2.3.1 written analysis and the confound diagnostics.
-2. **OASIS-3 / longitudinal real-data integration** — synthetic validates the longitudinal path; document the gap.
+2. **OpenNeuro / longitudinal real-data integration** — synthetic validates the longitudinal path; document the gap. IXI is already a stretch (§1.3) and is cut before this one.
 3. **Second and third adapters** — ABIDE alone satisfies real-data integration.
 4. **Model complexity** — random intercepts only, drop random slopes.
 5. **QC check breadth** — Euler + robust outliers only; drop asymmetry and longitudinal-change flags. Keep the three-level status model and the sensitivity/specificity validation regardless.
@@ -677,7 +695,9 @@ Note that region coverage is no longer a cut item — 10–20 regions is the v1 
 
 | Risk | Mitigation |
 |---|---|
-| OASIS-3 DUA slow or denied | Not on critical path (§0.3); synthetic validates the longitudinal path; ABIDE covers real-data integration |
+| No OpenNeuro accession clears the §1.2 audit | Not on critical path (§0.3); synthetic validates the longitudinal path; ABIDE covers real-data integration. Timebox the search to 4 hours and accept the synthetic-only outcome |
+| Chosen OpenNeuro accession is single-site or small | Expected, not a surprise (§1.3). It validates the longitudinal path but not the scanner/time confound; report which one and never imply both |
+| IXI derivatives never materialize | IXI is a stretch by construction; ABIDE is Track A regardless. Never let ~600 × `recon-all` onto the 6-week path |
 | Real stats files break the parser | Week 4 buffer; property-based tests; version-tolerant parsing from day 1; reason-coded parse failures |
 | Scanner/time confound is total in real data | Report it as a finding; label affected estimates as sensitivity analysis, not inference (§2.3.1) |
 | Harmonization eats the longitudinal signal | Regime B fixture test asserts and demonstrates this failure mode explicitly |

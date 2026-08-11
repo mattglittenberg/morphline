@@ -3,9 +3,9 @@
 Resolves the fixture layout written by
 :func:`morphline.fixtures.generator.write_fixtures` and converts parsed
 FreeSurfer records into canonical observations. This is the reference
-implementation of :class:`~morphline.adapters.base.DatasetAdapter`; ABIDE,
-OASIS-3, and OpenNeuro adapters follow the same contract and require no
-downstream changes (§1.4).
+implementation of :class:`~morphline.adapters.base.DatasetAdapter`; the ABIDE
+and OpenNeuro adapters follow the same contract and require no downstream
+changes (§1.4).
 """
 
 from __future__ import annotations

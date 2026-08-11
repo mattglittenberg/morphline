@@ -49,7 +49,7 @@ FORBIDDEN_TOKENS = (
     "ThickAvg",
     "SUBJECTS_DIR",
     "abide",
-    "oasis",
+    "openneuro",
 )
 
 #: Tokens permitted inside comments and docstrings. Explaining *why* the

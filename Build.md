@@ -18,7 +18,8 @@ Section references (§) point back into BUILD_PLAN.md.
 | Git | `git init` + commits, no remote | Badges/GHCR use an `OWNER` placeholder to find-and-replace |
 | CI gates | ruff lint+format, `mypy --strict src/`, pytest, Python e2e, Docker+Nextflow job | |
 | Coverage | Measured and printed, **no** `--cov-fail-under` gate | Badge deferred to week 6 |
-| Real data | None on hand | ABIDE / OASIS-3 are user TODOs below |
+| Real data | None on hand | ABIDE (cross-sectional) / OpenNeuro (longitudinal) are user TODOs below |
+| Longitudinal dataset | **OpenNeuro accession**, not OASIS-3 | OASIS-3 needs institutional registration an individual cannot satisfy (§1.3); OpenNeuro is `datalad clone`-able today |
 | Python | 3.12 | Matches `python:3.12-slim-bookworm` container base |
 
 ### Deviations from BUILD_PLAN.md, stated explicitly
@@ -26,6 +27,8 @@ Section references (§) point back into BUILD_PLAN.md.
 1. **In-repo ComBat instead of `neuroHarmonize`/`neuroCombat` (§2.3.4).** The dependency resolution is real: `neuroHarmonize` caps numpy below 2.0 and drags `pandas`, `scipy`, and `statsmodels` back with it. Writing the empirical-Bayes ComBat (Johnson et al. 2007) in ~150 lines of numpy removes the pin and converts the §2.3.2 validation suite from "does the library run" into "does *our* estimator recover the injected batch parameter" — which is the stronger portfolio artifact.
    *A reviewer will ask why not the standard library. The README must answer it.* Week-4 mitigation: an optional `combat-xcheck` dependency extra and a `@pytest.mark.optional` test comparing our output to `neuroCombat` in an isolated environment.
 2. **arm64 dev machine, amd64 deliverable (§2.6).** The container and Nextflow paths cannot be exercised locally at all during weeks 1–2. This is why the `nf` CI job is not optional — it is the *only* verification those paths get.
+3. **OpenNeuro replaces OASIS-3 as Track B; IXI is a stretch, not a swap (§1.3).** OASIS-3 requires institutional registration, so BUILD_PLAN revision 2's "apply on day 1 and forget about it" is not executable — it would spend the whole 6 weeks waiting on an approval that cannot arrive. OpenNeuro converts an *access* risk into a *fit* risk, which the §1.2 audit settles in an afternoon. The cost is honest: expect a smaller, shorter, probably single-site dataset, which validates the longitudinal path but not the scanner/time confound. IXI is the better harmonization design (three scanners, healthy controls only, no diagnosis confound) but distributes NIfTI images with **no FreeSurfer derivatives**, so it cannot feed a `.stats`-ingesting pipeline without ~600 × `recon-all`. ABIDE therefore stays Track A.
+   *A reviewer will ask why a portfolio project has no longitudinal real data.* The README must answer it: the longitudinal path is validated against injected ground truth, which real data cannot provide, and the gap is named rather than papered over.
 
 ---
 
@@ -33,9 +36,11 @@ Section references (§) point back into BUILD_PLAN.md.
 
 These are §1.2 / §1.3 day-1 items. None gate weeks 1–2, all gate week 4.
 
-- [ ] **Submit the OASIS-3 DUA** via NITRC-IR. Budget 1–3 weeks (§1.3). Then forget about it until it arrives.
-- [ ] **Download ABIDE I FreeSurfer 6 stats** — `github.com/dfsp-spirit/abide_preproc_smri_freesurfer6` plus the associated Zenodo deposits.
-- [ ] **Run the §1.2 dataset audit** (timebox 4 hours) on any candidate OpenNeuro accession. Accept a dataset only if actual `aseg.stats` / `aparc.stats` text files are locatable — not merely a `derivatives/` directory that turns out to hold MRIQC or fMRIPrep output.
+- [ ] **Download ABIDE I FreeSurfer 6 stats** — `github.com/dfsp-spirit/abide_preproc_smri_freesurfer6` plus the associated Zenodo deposits. This is Track A and it is not gated by anyone's approval.
+- [ ] **Run the §1.2 dataset audit** (timebox 4 hours) on candidate OpenNeuro accessions. Accept a dataset only if actual `aseg.stats` / `aparc.stats` text files are locatable — not merely a `derivatives/` directory that turns out to hold MRIQC or fMRIPrep output — *and* it has ≥2 structural sessions for a usable number of subjects. **This is now the Track B access task.** If nothing clears the timebox, Track B is synthetic-only and that is an acceptable v1.0 (§0.3).
+- [ ] **Optional, week 6 or later:** check whether a third-party IXI FreeSurfer derivative deposit exists. IXI ships NIfTI only; if no `.stats` exist, the adapter needs ~600 × `recon-all` and stays post-ship (§1.3). Do not start that compute during weeks 1–6.
+
+**No longer a TODO:** the OASIS-3 DUA. OASIS-3 requires institutional registration, so it is dropped from v1.0 entirely rather than waited on — see BUILD_PLAN §1.3 and deviation 3 above.
 
 ---
 
@@ -79,7 +84,7 @@ Parse failures **never** escape as exceptions — they become reason-coded recor
 
 ### Step 4. Adapters — `src/morphline/adapters/`
 
-`base.py` defines the `DatasetAdapter` protocol (discover files; resolve subject/session IDs, site, scanner, field strength, dates, demographics). `synthetic.py` is the only implementation now; ABIDE / OASIS-3 / OpenNeuro slot in later with **zero downstream change** (§1.4).
+`base.py` defines the `DatasetAdapter` protocol (discover files; resolve subject/session IDs, site, scanner, field strength, dates, demographics). `synthetic.py` is the only implementation now; ABIDE / OpenNeuro (and IXI if §1.3's stretch lands) slot in later with **zero downstream change** (§1.4).
 
 **The architectural rule is enforced by a test, not a comment.** `tests/test_architecture_boundary.py` walks the AST of `stages/*` asserting no import of `morphline.parsers`, and greps those modules for `freesurfer`, `aseg`, `aparc`, `.stats`. A failing test is the only enforcement that survives contact with a deadline.
 

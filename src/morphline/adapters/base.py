@@ -82,6 +82,26 @@ class DatasetAdapter(ABC):
             one row per region × measure.
         """
 
+    def regions_in_scope(self, parsed: list[ParsedStatsFile]) -> set[str] | None:
+        """Return the canonical regions this session's parsed sources could report.
+
+        Lets ingestion attribute a *region-level* loss — a session that was
+        discovered and produced observations, but not all of the ones expected
+        of it — to a source that was never read versus a source that was read
+        and stayed silent. Those have different implications and a row count
+        cannot tell them apart.
+
+        Args:
+            parsed: Successfully parsed sources for one session.
+
+        Returns:
+            The regions covered, or ``None`` if the adapter cannot say. The
+            default is ``None``: an adapter that has not thought about coverage
+            should produce an explicitly unattributed loss rather than have a
+            cause guessed on its behalf.
+        """
+        return None
+
     @abstractmethod
     def expected_sessions(self) -> pd.DataFrame:
         """Return the sessions the dataset *claims* to contain.

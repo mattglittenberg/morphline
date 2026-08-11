@@ -17,7 +17,7 @@ import pytest
 from morphline.adapters import AbidePcpAdapter, build_adapter
 from morphline.adapters.abide_pcp import CORE_TABLES, SESSION_ID, site_from_subject_id
 from morphline.config import DatasetConfig
-from morphline.schema import MissingnessCause, validate, write_canonical
+from morphline.schema import MissingnessCause, ObservationLoss, validate, write_canonical
 from morphline.stages.ingest import ingest
 
 ASEG_FS51 = """\
@@ -329,6 +329,41 @@ def test_empty_subject_is_counted_as_a_derivative_loss(abide_root: Path) -> None
     assert result.sessions_without_files == 1
 
 
+def test_hemisphere_only_subject_loses_regions_to_an_unread_source(tmp_path: Path) -> None:
+    """A session present but missing tables loses regions, and says which kind.
+
+    ABIDE PCP has five such subjects. The session is discovered, parses
+    cleanly, and produces observations, so every session-level counter reports
+    it intact — the loss exists only at the region level, and a source that was
+    never read is not the same finding as a source that was read and stayed
+    silent.
+    """
+    root = tmp_path / "abide"
+    make_subject(root, "CMU_a_0050642")
+    make_subject(root, "UCLA_51244", tables=("lh.aparc.stats",))
+
+    result = ingest(AbidePcpAdapter(root, config()))
+
+    assert result.sessions_discovered == 2
+    assert result.sessions_without_files == 0
+    assert result.observation_losses[str(ObservationLoss.SOURCE_UNAVAILABLE)] == 21
+    assert str(ObservationLoss.UNATTRIBUTED) not in result.observation_losses
+
+
+def test_region_read_but_not_reported_is_a_different_loss(tmp_path: Path) -> None:
+    """A structure absent from a table that *was* read is absent_from_source."""
+    root = tmp_path / "abide"
+    make_subject(root, "CMU_a_0050642")
+
+    result = ingest(AbidePcpAdapter(root, config()))
+    losses = result.observation_losses
+
+    # The fixture aseg lists hippocampus and thalamus only; the other five
+    # subcortical structures were looked for in a table that was read.
+    assert losses[str(ObservationLoss.ABSENT_FROM_SOURCE)] > 0
+    assert str(ObservationLoss.SOURCE_UNAVAILABLE) not in losses
+
+
 def test_expected_sessions_marks_derivative_loss(abide_root: Path) -> None:
     """A directory with no usable tables is missing_derivative."""
     expected = AbidePcpAdapter(abide_root, config()).expected_sessions()
@@ -351,6 +386,25 @@ def test_phenotypic_roster_reveals_acquisition_loss(abide_root: Path, tmp_path: 
 
     without = AbidePcpAdapter(abide_root, config()).expected_sessions()
     assert str(MissingnessCause.ACQUISITION) not in set(without["missing_cause"].dropna())
+
+
+def test_roster_does_not_duplicate_discovered_subjects(abide_root: Path, tmp_path: Path) -> None:
+    """A subject present on disk must never also be an acquisition loss.
+
+    The two sides share only the numeric participant ID: the roster says
+    ``50642`` where the directory is ``CMU_a_0050642``. Comparing the raw
+    strings makes every discovered subject look absent, and the funnel then
+    reconciles while attributing the whole dataset to a cause that is false.
+    """
+    csv = write_phenotypic(tmp_path / "pheno.csv")
+    expected = AbidePcpAdapter(abide_root, config(), phenotypic_csv=csv).expected_sessions()
+
+    assert expected["subject_id"].is_unique
+    acquisition = set(
+        expected.loc[expected["missing_cause"] == str(MissingnessCause.ACQUISITION), "subject_id"]
+    )
+    assert acquisition == {"99999"}
+    assert len(expected) == 5
 
 
 # -- factory -----------------------------------------------------------------

@@ -83,6 +83,13 @@ class RegionFit:
         converged: Whether the optimizer converged. Reported per region
             because some fits will fail, and failing loudly beats silently
             reporting a non-converged model (§2.5.1).
+        estimable: Whether the design can identify the specification at all.
+            A cross-sectional dataset has no within-subject time variance, so
+            ``time`` and ``time:dx_baseline`` are collinear with the intercept
+            and no optimizer can help. Kept distinct from ``converged``
+            because a design that cannot answer the question is not a model
+            that failed to fit, and pooling them would report a dataset
+            limitation as a numerical one.
         optimizer: Which optimizer produced the reported fit.
         random_slope_dropped: Whether the random slope on time had to be
             dropped for the fit to converge. A random-intercept-only fit
@@ -100,6 +107,7 @@ class RegionFit:
     n_observations: int
     n_subjects: int
     converged: bool
+    estimable: bool = True
     coefficients: dict[str, float] = field(default_factory=dict)
     std_errors: dict[str, float] = field(default_factory=dict)
     p_values: dict[str, float] = field(default_factory=dict)
@@ -138,11 +146,24 @@ class ModelResults:
     notes: list[str] = field(default_factory=list)
 
     @property
+    def n_estimable(self) -> int:
+        """Regions whose specification the design can identify at all."""
+        return sum(1 for f in self.fits if f.estimable)
+
+    @property
     def convergence_rate(self) -> float:
-        """Fraction of attempted fits that converged."""
-        if not self.fits:
+        """Fraction of *estimable* fits that converged.
+
+        Regions the design cannot identify are outside the denominator. A
+        cross-sectional dataset would otherwise report 0% convergence, which
+        reads as a broken model rather than as a dataset that cannot answer the
+        question asked of it — so :attr:`n_estimable` must be read alongside
+        this, and the report states both.
+        """
+        estimable = [f for f in self.fits if f.estimable]
+        if not estimable:
             return 0.0
-        return sum(1 for f in self.fits if f.converged) / len(self.fits)
+        return sum(1 for f in estimable if f.converged) / len(estimable)
 
     def to_frame(self) -> pd.DataFrame:
         """Return per-region results as a flat frame."""
@@ -154,6 +175,7 @@ class ModelResults:
                     "n_observations": f.n_observations,
                     "n_subjects": f.n_subjects,
                     "converged": f.converged,
+                    "estimable": f.estimable,
                     "optimizer": f.optimizer,
                     "random_slope_dropped": f.random_slope_dropped,
                     "estimate": f.primary_estimate,
@@ -174,6 +196,7 @@ class ModelResults:
             "fdr_alpha": self.fdr_alpha,
             "n_modeled_observations": self.n_modeled_observations,
             "convergence_rate": self.convergence_rate,
+            "n_estimable": self.n_estimable,
             "notes": self.notes,
         }
 
@@ -236,6 +259,26 @@ def fit_region(observations: pd.DataFrame, region: str, measure_type: str) -> Re
             n_subjects=int(df["subject_id"].nunique()) if not df.empty else 0,
             converged=False,
             message="insufficient data: fewer than 3 subjects with complete covariates",
+        )
+
+    # Checked before any optimizer runs, because no optimizer can fix it. With
+    # a single session per subject, `time` is constant, so `time` and
+    # `time:dx_baseline` are collinear with the intercept and the random slope
+    # has nothing to vary over. statsmodels reports this as a singular matrix,
+    # which reads as a numerical accident rather than as the design fact it is.
+    if df["time"].nunique(dropna=True) < 2:
+        return RegionFit(
+            region=region,
+            measure_type=measure_type,
+            n_observations=0,
+            n_subjects=int(df["subject_id"].nunique()),
+            converged=False,
+            estimable=False,
+            message=(
+                "not estimable: time has zero variance across "
+                f"{df['subject_id'].nunique()} subjects, so the longitudinal "
+                "specification is not identifiable on this cross-sectional dataset"
+            ),
         )
 
     n_obs = len(df)
@@ -401,8 +444,18 @@ def fit_model(observations: pd.DataFrame, analysis_config: AnalysisConfig) -> Mo
             f"{V1_TEST_COUNT} tests (14 structures x 2 hemispheres)."
         ),
     ]
-    if any(not f.converged for f in fits):
-        failed = [f.region for f in fits if not f.converged]
+    unidentifiable = [f.region for f in fits if not f.estimable]
+    if unidentifiable:
+        notes.append(
+            "This dataset carries no within-subject time variance, so the "
+            f"{PRIMARY_TERM} coefficient is not identifiable for {len(unidentifiable)} "
+            "of the attempted region(s). These are reported as not estimable rather "
+            "than as failed fits: the limitation is in the study design, not in the "
+            "optimizer, and a cross-sectional dataset cannot validate a longitudinal "
+            "specification (§1.3)."
+        )
+    failed = [f.region for f in fits if f.estimable and not f.converged]
+    if failed:
         notes.append(f"Non-converged regions reported rather than dropped: {failed}")
 
     return ModelResults(

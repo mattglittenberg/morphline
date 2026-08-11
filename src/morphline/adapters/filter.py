@@ -54,6 +54,15 @@ class SubjectFilter(DatasetAdapter):
         """Delegate canonicalization to the wrapped adapter."""
         return self._inner.to_canonical(subject_session, parsed)
 
+    def regions_in_scope(self, parsed: list[ParsedStatsFile]) -> set[str] | None:
+        """Delegate region coverage to the wrapped adapter.
+
+        Not inherited: the base default is ``None``, so a missing delegation
+        here would silently downgrade every staged run's region-level losses to
+        unattributed while the in-process run attributed them.
+        """
+        return self._inner.regions_in_scope(parsed)
+
     def expected_sessions(self) -> pd.DataFrame:
         """Return the wrapped adapter's expected sessions for this subject."""
         expected = self._inner.expected_sessions()

@@ -17,7 +17,12 @@ from typing import Any
 
 from morphline.adapters.freesurfer_regions import APARC_STRUCT_MAP, ASEG_STRUCT_MAP
 from morphline.parsers import ParsedStatsFile, StatsTableType
-from morphline.regions import region_key
+from morphline.regions import (
+    CORTICAL_REGIONS,
+    LATERAL_HEMISPHERES,
+    SUBCORTICAL_REGIONS,
+    region_key,
+)
 from morphline.schema import Hemisphere, MeasureType
 
 
@@ -112,6 +117,35 @@ def measurement_rows(parsed: list[ParsedStatsFile]) -> list[dict[str, Any]]:
         else:
             rows.extend(aparc_thickness_rows(record))
     return rows
+
+
+def regions_in_scope(parsed: list[ParsedStatsFile]) -> set[str]:
+    """Return the canonical regions this session's parsed tables could report.
+
+    Coverage, not content: an aparc table for one hemisphere puts that
+    hemisphere's cortical parcels in scope whether or not the table actually
+    lists them. Subtracting the regions produced from this set is what
+    separates a region whose source was never read from one whose source was
+    read and stayed silent — two facts that look identical in a row count.
+
+    Args:
+        parsed: Successfully parsed tables belonging to a single session.
+
+    Returns:
+        Canonical region names covered by the tables present.
+    """
+    scope: set[str] = set()
+    for record in parsed:
+        if record.table_type is StatsTableType.ASEG:
+            scope.update(
+                region_key(structure, hemisphere)
+                for structure in SUBCORTICAL_REGIONS
+                for hemisphere in LATERAL_HEMISPHERES
+            )
+        elif record.hemisphere in {"lh", "rh"}:
+            hemisphere = Hemisphere(record.hemisphere)
+            scope.update(region_key(structure, hemisphere) for structure in CORTICAL_REGIONS)
+    return scope
 
 
 def session_globals(parsed: list[ParsedStatsFile]) -> dict[str, Any]:

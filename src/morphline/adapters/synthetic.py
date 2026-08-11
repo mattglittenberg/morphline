@@ -18,7 +18,11 @@ from typing import Any
 import pandas as pd
 
 from morphline.adapters.base import DatasetAdapter, SubjectSession
-from morphline.adapters.freesurfer_rows import measurement_rows, session_globals
+from morphline.adapters.freesurfer_rows import (
+    measurement_rows,
+    regions_in_scope,
+    session_globals,
+)
 from morphline.coerce import as_float, as_str
 from morphline.config import DatasetConfig
 from morphline.parsers import PARSER_VERSION, ParsedStatsFile
@@ -85,7 +89,12 @@ class SyntheticAdapter(DatasetAdapter):
         """
         if self.sessions.empty:
             return pd.DataFrame(columns=["subject_id", "session_id", "missing_cause"])
-        cols = [c for c in ("subject_id", "session_id", "missing_cause") if c in self.sessions]
+        # ``site`` travels with the roster so missingness can be broken down by
+        # site (§5.2). A session that produced no observations carries no site
+        # anywhere else, and those are exactly the sessions being counted.
+        cols = [
+            c for c in ("subject_id", "session_id", "missing_cause", "site") if c in self.sessions
+        ]
         return self.sessions[cols].copy()
 
     # -- discovery -----------------------------------------------------------
@@ -116,6 +125,17 @@ class SyntheticAdapter(DatasetAdapter):
                 )
 
     # -- canonicalization ----------------------------------------------------
+
+    def regions_in_scope(self, parsed: list[ParsedStatsFile]) -> set[str] | None:
+        """Return the regions this session's parsed tables could report.
+
+        Args:
+            parsed: Successfully parsed tables for one session.
+
+        Returns:
+            Canonical region names covered by the tables present.
+        """
+        return regions_in_scope(parsed)
 
     def to_canonical(
         self, subject_session: SubjectSession, parsed: list[ParsedStatsFile]

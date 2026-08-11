@@ -1,0 +1,54 @@
+# ABIDE I PCP — full-scale real-data run (BUILD_PLAN §1.3, §4 week 4).
+#
+# Cross-sectional integration only. ABIDE I has one structural session per
+# participant, so this run validates the parser, adapter, accounting, QC, and
+# harmonization stages against real files. It validates nothing longitudinal
+# (§1.3) — `time` is 0 for every observation and the primary time x diagnosis
+# term is not estimable here by construction, not by failure.
+#
+# No fixtures block: dataset.path supplies the data, so random_seeds stays
+# empty rather than carrying a seed that governed nothing.
+dataset:
+  name: abide-i-pcp
+  # The release the derivatives came from, which is knowledge about the
+  # download rather than about any file: PCP's FreeSurfer 5.1 deposit.
+  version: pcp-freesurfer-5.1
+  adapter: abide-pcp
+  path: data/abide_pcp
+  # Supplies site, age, sex, and diagnosis, none of which are in .stats files,
+  # and — because it lists all 1112 participants — supplies the roster that
+  # lets the 9 known-incomplete subjects be attributed rather than vanish.
+  phenotypic_csv: data/Phenotypic_V1_0b_preprocessed1.csv
+  # No effect while the phenotypic table resolves site: its SITE_ID already
+  # distinguishes UM_1/UM_2 and LEUVEN_1/LEUVEN_2. It governs only the
+  # subject-ID fallback, so it is set explicitly to record the intent.
+  collapse_site_subsample: false
+
+qc:
+  enabled: true
+  thresholds:
+    # The synthetic defaults were tuned to an aging cohort with a 1.5e6 mean
+    # eTIV. ABIDE is children and young adults, whose observed distribution
+    # here has a 1.32e6 median and a 5th percentile near 895,000 — a 1.0e6
+    # floor would flag 102 subjects, most of them simply small-headed.
+    #
+    # These bounds are *plausibility* bounds (§2.4.2), not a lower quartile:
+    # they exist to catch a head size no living human has. Below 700,000 the
+    # observed values run 12,000 / 65,000 / 134,000 — order-of-magnitude recon
+    # failures rather than small children. That flags 14 subjects, 1.3%, which
+    # is the handful of failed reconstructions ABIDE is known to contain.
+    etiv_min: 700_000.0
+    etiv_max: 2_400_000.0
+
+harmonization:
+  enabled: true
+  min_batch_size: 20
+  small_batch_policy: report_and_exclude
+
+analysis:
+  include_qc_status: [PASS]
+  region_set: v1
+  fdr_alpha: 0.05
+
+report:
+  title: "morphline — ABIDE I PCP cross-sectional integration"

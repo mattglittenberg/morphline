@@ -138,6 +138,10 @@ class QCThresholds(_Base):
     #: Euler numbers below this are suspect. Evaluated *within site*, because
     #: site distributions genuinely differ (§2.4.2).
     euler_min: float = -200.0
+    #: Robust z below which a Euler number is an outlier *for its own site*.
+    #: The absolute floor alone cannot flag a surface that is bad for a good
+    #: site without also condemning an entire poor one.
+    euler_mad_z: float = 4.0
     etiv_min: float = 1_000_000.0
     etiv_max: float = 2_100_000.0
     #: Median/MAD robust z-score beyond which a region is an outlier.

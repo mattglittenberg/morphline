@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from pydantic import ValidationError
@@ -212,7 +212,7 @@ def account(
     # Exact loss counts come from ingestion, which is the only stage that can
     # observe them. Absent the sidecar they stay zero, so any resulting loss
     # is reported as unexplained rather than quietly absorbed.
-    counters: dict[str, int] = {}
+    counters: dict[str, Any] = {}
     counters_path = Path(observations).parent / "ingest_counters.json"
     if counters_path.is_file():
         counters = json.loads(counters_path.read_text(encoding="utf-8"))
@@ -235,6 +235,11 @@ def account(
         sessions_without_files=sessions_without_files,
         sessions_all_files_rejected=counters.get("sessions_all_files_rejected", 0),
         sessions_no_recognised_regions=counters.get("sessions_no_recognised_regions", 0),
+        observations_expected=counters.get("observations_expected", 0),
+        observation_losses=counters.get("observation_losses", {}),
+        regions_per_session=counters.get("regions_per_session", {}),
+        measures_per_file=counters.get("measures_per_file", {}),
+        measures_overwritten=counters.get("measures_overwritten", 0),
         qc_observations=qc_obs,
         modeled_observations=modeled,
         model_fits=fits,
@@ -378,10 +383,20 @@ def collect(
     consuming process.
     """
     from morphline.schema import write_canonical
+    from morphline.stages.ingest import merge_counters
 
     merged = read_canonical_many(list(inputs))
     outdir.mkdir(parents=True, exist_ok=True)
     path = write_canonical(merged, outdir / "observations.parquet")
+
+    # The counter sidecars fan out with the observations and must be gathered
+    # with them, or the accounting stage reconciles a funnel built from one
+    # subject's counters and the whole dataset's rows.
+    counters = merge_counters(Path(p).parent / "ingest_counters.json" for p in inputs)
+    if counters:
+        (outdir / "ingest_counters.json").write_text(
+            json.dumps(counters, indent=2), encoding="utf-8"
+        )
     typer.echo(f"merged {len(inputs)} files into {path} ({len(merged)} observations)")
 
 

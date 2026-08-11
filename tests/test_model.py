@@ -14,6 +14,7 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from conftest import make_fixture_config
@@ -108,6 +109,51 @@ class TestConvergenceReporting:
         fit = fit_region(obs, "lh-nonexistent-region", "volume")
         assert not fit.converged
         assert fit.n_observations == 0
+
+
+class TestCrossSectionalDesign:
+    """A design that cannot answer the question is not a fit that failed."""
+
+    @staticmethod
+    def _cross_sectional(fixture_tree: Path) -> pd.DataFrame:
+        """Keep one session per subject, which is what ABIDE actually is."""
+        obs = ingest(SyntheticAdapter(fixture_tree)).observations
+        baseline = obs[obs["time_from_baseline_years"] == 0.0].copy()
+        assert not baseline.empty
+        return baseline
+
+    def test_zero_time_variance_is_not_estimable(self, fixture_tree: Path) -> None:
+        fit = fit_region(self._cross_sectional(fixture_tree), "lh-hippocampus", "volume")
+        assert not fit.estimable
+        assert not fit.converged
+        assert "not estimable" in fit.message
+        assert "cross-sectional" in fit.message
+
+    def test_not_estimable_is_distinct_from_non_convergence(self, fixture_tree: Path) -> None:
+        """The optimizer never ran, so it cannot be blamed for the outcome.
+
+        Reporting this as non-convergence would put a study-design limitation
+        into the convergence rate §5.2 asks to be held below a threshold, where
+        no amount of model work could ever move it.
+        """
+        included = apply_qc(self._cross_sectional(fixture_tree), QCConfig(), AnalysisConfig())
+        results = fit_model(included, AnalysisConfig())
+        assert results.fits[0].n_subjects > 0
+        assert results.n_estimable == 0
+        assert all(not f.estimable for f in results.fits)
+        assert any("not identifiable" in note for note in results.notes)
+        assert not any("Non-converged regions" in note for note in results.notes)
+
+    def test_no_coefficients_are_invented(self, fixture_tree: Path) -> None:
+        fit = fit_region(self._cross_sectional(fixture_tree), "lh-hippocampus", "volume")
+        assert fit.coefficients == {}
+        assert fit.primary_estimate is None
+        assert fit.n_observations == 0
+
+    def test_longitudinal_fixtures_remain_estimable(self, fixture_tree: Path) -> None:
+        """The guard must not fire on the data it is supposed to let through."""
+        obs = ingest(SyntheticAdapter(fixture_tree)).observations
+        assert fit_region(obs, "lh-hippocampus", "volume").estimable
 
 
 def test_family_size_is_reported_and_matches_the_region_set(fixture_tree: Path) -> None:

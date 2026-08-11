@@ -1,8 +1,11 @@
 """QC and harmonization stage tests.
 
-Both are stubs in v0.1.0, so these tests pin the *contracts* that week 3 and
-week 4 must not break — plus the confound diagnostics, which are real now
-because §7 requires them to survive even if the ComBat implementation is cut.
+These pin the *contracts* — the field structure, the three-level vocabulary,
+and the QC/analysis separation — independently of which checks are
+implemented. The checks themselves are validated against planted ground truth
+in ``test_qc_validation.py``; harmonization's estimator is still a stub, but
+its confound diagnostics are real, because §7 requires them to survive even if
+the ComBat implementation is cut.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from morphline.fixtures import write_fixtures
 from morphline.schema import QCStatus
 from morphline.stages.harmonize import assess_confounding, find_small_batches, harmonize
 from morphline.stages.ingest import ingest
-from morphline.stages.qc import apply_qc
+from morphline.stages.qc import ALL_FLAGS, apply_qc
 
 
 @pytest.fixture
@@ -35,21 +38,34 @@ class TestQCContract:
         for column in ("qc_status", "qc_flags", "qc_score", "qc_notes", "analysis_included"):
             assert column in out.columns
 
-    def test_stub_marks_everything_pass(self, observations: pd.DataFrame) -> None:
+    def test_status_uses_the_three_level_vocabulary(self, observations: pd.DataFrame) -> None:
         out = apply_qc(observations, QCConfig(), AnalysisConfig())
-        assert set(out["qc_status"]) == {str(QCStatus.PASS)}
+        assert set(out["qc_status"]) <= {str(s) for s in QCStatus}
 
-    def test_stub_is_honest_about_being_a_stub(self, observations: pd.DataFrame) -> None:
-        """Marking everything PASS is fine; claiming checks ran is not."""
+    def test_disabling_qc_says_so_rather_than_claiming_checks_ran(
+        self, observations: pd.DataFrame
+    ) -> None:
+        """Passing everything is fine; claiming a check passed it is not."""
+        out = apply_qc(observations, QCConfig(enabled=False), AnalysisConfig())
+        assert set(out["qc_status"]) == {str(QCStatus.PASS)}
+        assert "disabled" in out["qc_notes"].iloc[0].lower()
+        assert not any(out["qc_flags"].apply(bool))
+
+    def test_flags_name_the_check_that_fired(self, observations: pd.DataFrame) -> None:
         out = apply_qc(observations, QCConfig(), AnalysisConfig())
-        assert "stub" in out["qc_notes"].iloc[0].lower()
+        fired = {code for codes in out["qc_flags"] for code in codes}
+        assert fired <= set(ALL_FLAGS)
+        for codes, note in zip(out["qc_flags"], out["qc_notes"], strict=True):
+            for code in codes:
+                assert code in note
 
     def test_inclusion_policy_is_configuration_not_hardcoded(
         self, observations: pd.DataFrame
     ) -> None:
         """QC classifies; the analysis layer decides (§2.4.1)."""
         out = apply_qc(observations, QCConfig(), AnalysisConfig())
-        assert out["analysis_included"].all()
+        passing = out["qc_status"] == str(QCStatus.PASS)
+        assert (out["analysis_included"] == passing).all()
 
         exclude_all = AnalysisConfig(include_qc_status=())
         out2 = apply_qc(observations, QCConfig(), exclude_all)
@@ -110,6 +126,23 @@ class TestConfoundDiagnostics:
 
         diag = assess_confounding(empty_canonical())
         assert diag.severity == "unknown"
+
+    def test_constant_time_is_not_assessable_rather_than_clean(
+        self, observations: pd.DataFrame
+    ) -> None:
+        """Zero time variance makes the R2 zero by construction, not by design.
+
+        A cross-sectional dataset reaches this on every run. Reporting it as
+        "no confounding" would be indistinguishable in the report from the same
+        verdict earned by a well-spread longitudinal cohort, so the stage must
+        say that nothing was assessed.
+        """
+        cross_sectional = observations[observations["time_from_baseline_years"] == 0.0]
+        diag = assess_confounding(cross_sectional)
+
+        assert diag.severity == "not_assessable"
+        assert "cannot be assessed" in diag.message
+        assert "firm ground" not in diag.message
 
 
 class TestSmallBatches:

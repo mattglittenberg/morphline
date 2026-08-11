@@ -9,6 +9,11 @@
 # Serial by design. Resumable: existing non-empty files are skipped, so an
 # interrupted run can simply be re-run.
 #
+# Empty subject directories are created and kept. All 1112 subjects have a
+# directory in the bucket; four hold no files. That empty directory is the
+# evidence distinguishing "acquired, derivative missing" from "never acquired",
+# and deleting it makes the adapter unable to tell the two apart.
+#
 # Usage:
 #   scripts/fetch_abide_pcp.sh [--outdir DIR] [--subjects FILE] [--all-tables]
 #
@@ -139,7 +144,6 @@ while IFS= read -r subject; do
       fi
     fi
   done
-  find "$OUTDIR/$subject" -type d -empty -delete 2>/dev/null || true
 done < "$SUBJECTS"
 
 printf '\r%-40s\r' ''

@@ -57,21 +57,31 @@ class AccountingReport:
         funnel: Ordered funnel stages.
         parse_failures_by_code: Rejected file counts by reason code.
         sessions_per_subject: Distribution of session counts per subject.
+        regions_per_session: Distribution of regions observed per session.
         metadata_coverage: Value distributions for site, scanner, field
             strength, and FreeSurfer version.
         batch_sizes: Observations and subjects per site.
         qc_summary: PASS/WARNING/FAIL counts, overall and by site.
+        measures_per_file: Distribution of header measure counts per parsed
+            file. Reported, never assumed: a silently lost header measure
+            changes neither the row count nor the failure rate (§5.2).
         missingness: Counts by cause (§2.5.4).
+        missingness_by_site: Missingness causes broken down by site.
+        missingness_by_timepoint: Missingness causes broken down by session.
         notes: Free-text observations worth surfacing in the report.
     """
 
     funnel: list[FunnelStage] = field(default_factory=list)
     parse_failures_by_code: dict[str, int] = field(default_factory=dict)
     sessions_per_subject: dict[str, int] = field(default_factory=dict)
+    regions_per_session: dict[str, int] = field(default_factory=dict)
     metadata_coverage: dict[str, dict[str, int]] = field(default_factory=dict)
     batch_sizes: dict[str, dict[str, int]] = field(default_factory=dict)
     qc_summary: dict[str, Any] = field(default_factory=dict)
+    measures_per_file: dict[str, int] = field(default_factory=dict)
     missingness: dict[str, int] = field(default_factory=dict)
+    missingness_by_site: dict[str, dict[str, int]] = field(default_factory=dict)
+    missingness_by_timepoint: dict[str, dict[str, int]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def funnel_frame(self) -> pd.DataFrame:
@@ -110,10 +120,14 @@ class AccountingReport:
             "funnel": self.funnel_frame().to_dict(orient="records"),
             "parse_failures_by_code": self.parse_failures_by_code,
             "sessions_per_subject": self.sessions_per_subject,
+            "regions_per_session": self.regions_per_session,
             "metadata_coverage": self.metadata_coverage,
             "batch_sizes": self.batch_sizes,
             "qc_summary": self.qc_summary,
+            "measures_per_file": self.measures_per_file,
             "missingness": self.missingness,
+            "missingness_by_site": self.missingness_by_site,
+            "missingness_by_timepoint": self.missingness_by_timepoint,
             "notes": self.notes,
             "reconciles": not self.reconcile(),
             "reconciliation_errors": self.reconcile(),
@@ -138,6 +152,11 @@ def build_accounting(
     sessions_without_files: int,
     sessions_all_files_rejected: int = 0,
     sessions_no_recognised_regions: int = 0,
+    observations_expected: int = 0,
+    observation_losses: dict[str, int] | None = None,
+    regions_per_session: dict[str, int] | None = None,
+    measures_per_file: dict[str, int] | None = None,
+    measures_overwritten: int = 0,
     qc_observations: pd.DataFrame | None = None,
     modeled_observations: int | None = None,
     model_fits: pd.DataFrame | None = None,
@@ -154,6 +173,13 @@ def build_accounting(
         sessions_all_files_rejected: Sessions whose every file failed to parse.
         sessions_no_recognised_regions: Sessions that parsed but yielded no
             canonical regions.
+        observations_expected: Observations the sessions that produced any
+            should have produced. Zero means ingestion did not supply it, and
+            the canonicalization boundary then reports no loss.
+        observation_losses: Region-level loss counts by reason code.
+        regions_per_session: Distribution of regions observed per session.
+        measures_per_file: Distribution of header measure counts per file.
+        measures_overwritten: Header measures lost to key collisions.
         qc_observations: Observations after QC, carrying ``qc_status``.
         modeled_observations: Observations that actually entered the model.
         model_fits: Per-region fit summary carrying ``region`` and
@@ -269,11 +295,20 @@ def build_accounting(
             str(k): int(v) for k, v in per_subject.value_counts().sort_index().items()
         }
 
+    # A session that yields *some* of its regions passes every session-level
+    # counter above intact, so region-level loss is invisible unless this
+    # boundary looks for it. The expected count and its causes are measured at
+    # ingestion; absent them the boundary reports no loss rather than inventing
+    # an expectation it cannot justify.
+    observations_lost = max(0, observations_expected - len(observations))
+    report.regions_per_session = dict(regions_per_session or {})
     report.funnel.append(
         FunnelStage(
             boundary="canonical observations",
             unit="observations",
             count=len(observations),
+            lost=observations_lost,
+            causes=dict(observation_losses or {}),
         )
     )
 
@@ -345,8 +380,71 @@ def build_accounting(
             )
         )
 
+    report.measures_per_file = dict(measures_per_file or {})
+    if measures_overwritten:
+        report.notes.append(
+            f"{measures_overwritten} header measure(s) were overwritten by a later "
+            "# Measure line and no longer appear in the output. This is a parser "
+            "defect rather than a property of the data — a declared measurement "
+            "vanished without changing the row count or the failure rate."
+        )
+
     report.missingness = planned_missing
+    report.missingness_by_site = _missingness_by(expected_sessions, observations, "site")
+    report.missingness_by_timepoint = _missingness_by(
+        expected_sessions, observations, "session_id"
+    )
     return report
+
+
+def _missingness_by(
+    expected_sessions: pd.DataFrame, observations: pd.DataFrame, column: str
+) -> dict[str, dict[str, int]]:
+    """Break missingness down by a grouping column (§5.2).
+
+    A single overall rate hides the thing worth knowing. Loss concentrated in
+    one site or one timepoint is a different finding from loss spread evenly,
+    and only the breakdown distinguishes them.
+
+    Args:
+        expected_sessions: Sessions the dataset claims to contain, with causes.
+        observations: Canonical observations, supplying each session's site.
+        column: ``"site"`` or ``"session_id"``.
+
+    Returns:
+        Cause counts per group. Empty when the grouping is unavailable —
+        sessions that never produced observations carry no site, so an absent
+        breakdown is reported as absent rather than bucketed under a fabricated
+        label.
+    """
+    if expected_sessions.empty or "missing_cause" not in expected_sessions.columns:
+        return {}
+
+    missing = expected_sessions[expected_sessions["missing_cause"].notna()].copy()
+    if missing.empty:
+        return {}
+
+    if column == "site":
+        # The roster is preferred over the observations because the sessions
+        # being counted here are the ones that produced no observations, so
+        # the observations cannot say where they came from.
+        if "site" in missing.columns:
+            missing["_group"] = missing["site"]
+        elif not observations.empty and "site" in observations.columns:
+            sites = observations.groupby("subject_id", dropna=False)["site"].first()
+            missing["_group"] = missing["subject_id"].map(sites)
+        else:
+            return {}
+    elif column in missing.columns:
+        missing["_group"] = missing[column]
+    else:
+        return {}
+
+    missing["_group"] = missing["_group"].fillna("unknown").astype(str)
+    return {
+        str(group): {str(k): int(v) for k, v in frame["missing_cause"].value_counts().items()}
+        for group, frame in missing.groupby("_group", dropna=False)
+    }
 
 
 def _model_exclusion_causes(
@@ -391,16 +489,31 @@ def _model_exclusion_causes(
     else:
         available = 0
 
+    # A region the design cannot identify offered its observations and had
+    # nothing wrong with them. Folding those into the covariate bucket would
+    # report a study-design limitation as a data-quality one — the two have
+    # opposite implications, which is why they are separate codes at all.
+    unidentifiable_regions: set[str] = set()
+    if "estimable" in model_fits.columns:
+        not_estimable = ~model_fits["estimable"].fillna(True).astype(bool)
+        unidentifiable_regions = set(model_fits.loc[not_estimable, "region"].dropna())
+    unidentifiable = (
+        int(considered["region"].isin(unidentifiable_regions).sum())
+        if unidentifiable_regions and "region" in considered.columns
+        else 0
+    )
+
     outside = max(0, len(considered) - available)
     fitted = (
         int(model_fits["n_observations"].fillna(0).sum())
         if "n_observations" in model_fits.columns
         else 0
     )
-    incomplete = max(0, available - fitted)
+    incomplete = max(0, available - unidentifiable - fitted)
 
     causes = {
         str(ModelExclusion.OUTSIDE_REGION_SET): outside,
+        str(ModelExclusion.DESIGN_NOT_IDENTIFIABLE): unidentifiable,
         str(ModelExclusion.INCOMPLETE_COVARIATES): incomplete,
     }
     causes = {code: count for code, count in causes.items() if count > 0}

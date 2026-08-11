@@ -75,6 +75,33 @@ class MissingnessCause(StrEnum):
     EXCLUDED_QC = "excluded_qc"
 
 
+class ObservationLoss(StrEnum):
+    """Why a region expected of a discovered session produced no observation.
+
+    A session that yielded *some* observations still passes through the
+    canonicalization boundary intact as far as a session count can tell, so
+    losses at the region level are invisible to every counter above this one.
+    ABIDE's five hemisphere-only subjects and its five subjects whose tables
+    omit individual structures are exactly this shape: the session is present,
+    the funnel balances, and the observations are gone.
+
+    The two causes are distinguishable from evidence and are not
+    interchangeable. A source that was never read cannot say anything about the
+    region; a source that *was* read and did not report it is a statement about
+    the segmentation.
+    """
+
+    SOURCE_UNAVAILABLE = "source_unavailable"
+    """The source that would carry the region was absent or failed to parse."""
+
+    ABSENT_FROM_SOURCE = "absent_from_source"
+    """The source was read successfully and did not report the region."""
+
+    #: The adapter could not say which sources cover which regions, so the
+    #: count is known but its cause is not. Naming the ignorance beats guessing.
+    UNATTRIBUTED = "observation_loss_cause_unavailable"
+
+
 class ModelExclusion(StrEnum):
     """Why a QC-passing observation did not reach the model.
 
@@ -92,6 +119,12 @@ class ModelExclusion(StrEnum):
 
     OUTSIDE_REGION_SET = "outside_modeled_region_set"
     INCOMPLETE_COVARIATES = "incomplete_model_covariates"
+    #: The region was in scope and its covariates were complete, but the study
+    #: design cannot identify the specification — a cross-sectional dataset
+    #: carries no within-subject time variance for a longitudinal model to
+    #: estimate. A property of the data collection, not of the data quality,
+    #: and reporting it as incomplete covariates would blame the wrong thing.
+    DESIGN_NOT_IDENTIFIABLE = "design_not_identifiable"
     #: The count is known but the model's per-region inputs were not supplied,
     #: so no cause can be established. Naming the ignorance beats guessing.
     UNATTRIBUTED = "not_modeled_cause_unavailable"

@@ -102,6 +102,14 @@ class ParsedStatsFile:
             CVS revision instead.
         version_declaration: Whatever the header declared, verbatim, so a null
             ``freesurfer_version`` can still be traced to what the file said.
+        measure_lines_declared: How many ``# Measure`` lines the header
+            carried. §5.2 requires measure counts per file be *reported, not
+            assumed*, because a header measure can disappear during parsing
+            without changing the row count, the failure rate, or anything else
+            a coarser check would notice.
+        measures_overwritten: ``# Measure`` lines whose every key was already
+            indexed, so the line replaced an earlier measurement instead of
+            adding one. Non-zero means measures were silently lost.
         warnings: Non-fatal structural oddities worth surfacing.
     """
 
@@ -115,6 +123,8 @@ class ParsedStatsFile:
     rows: tuple[dict[str, str | float], ...]
     freesurfer_version: str | None
     version_declaration: str | None = None
+    measure_lines_declared: int = 0
+    measures_overwritten: int = 0
     warnings: tuple[str, ...] = field(default=())
 
     @property
@@ -223,6 +233,8 @@ class FreeSurferStatsParser:
         col_headers: tuple[str, ...] = ()
         data_lines: list[tuple[int, str]] = []
         warnings: list[str] = []
+        measure_lines = 0
+        measures_overwritten = 0
 
         for lineno, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
@@ -234,11 +246,20 @@ class FreeSurferStatsParser:
                 continue
 
             if (m := _MEASURE_RE.match(stripped)) is not None:
+                measure_lines += 1
                 parsed = self._parse_measure(m.group("body"))
                 if parsed is None:
                     warnings.append(f"line {lineno}: unparseable # Measure line")
                     continue
                 keys, value = parsed
+                # A line whose every key is already taken has been overwritten
+                # by a later one. This is how both real §1.3 parser breaks
+                # presented: no exception, no failure code, no change in row
+                # count — a header measure simply stopped existing. Counting
+                # the collision is the only thing that makes it visible.
+                if keys and all(key in measures for key in keys):
+                    measures_overwritten += 1
+                    warnings.append(f"line {lineno}: # Measure keys {keys} already indexed")
                 for key in keys:
                     measures[key] = value
                 continue
@@ -296,6 +317,8 @@ class FreeSurferStatsParser:
             rows=tuple(rows),
             freesurfer_version=self._version_from_header(header_fields),
             version_declaration=self._version_declaration(header_fields),
+            measure_lines_declared=measure_lines,
+            measures_overwritten=measures_overwritten,
             warnings=tuple(warnings),
         )
 

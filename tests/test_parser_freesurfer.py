@@ -253,6 +253,47 @@ def test_aparc_header_measures_sharing_a_short_name_do_not_collide(tmp_path: Pat
     assert result.header_measures["MeanThickness"] == 2.47864
 
 
+def test_measure_lines_are_counted_not_assumed(tmp_path: Path) -> None:
+    """§5.2 requires measure counts per file be reported.
+
+    Both real §1.3 parser breaks were silent losses of a header measure: no
+    exception, no failure code, no change in row count. A declared count is the
+    only thing a later check can compare against.
+    """
+    parser = FreeSurferStatsParser()
+    aparc = parser.parse(write(tmp_path, "lh.aparc.stats", APARC_REAL_HEADER))
+    aseg = parser.parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    assert not isinstance(aparc, ParseFailure)
+    assert not isinstance(aseg, ParseFailure)
+
+    assert aparc.measure_lines_declared == 3
+    assert aseg.measure_lines_declared == 2
+    assert aparc.measures_overwritten == 0
+    assert aseg.measures_overwritten == 0
+
+
+def test_a_collided_measure_is_counted_as_overwritten(tmp_path: Path) -> None:
+    """The instrument must actually fire on the failure it exists to catch.
+
+    Two lines sharing a short name with no alias to tell them apart: the second
+    replaces the first, and nothing else in the output changes. An unfirable
+    check reads as protection while providing none.
+    """
+    colliding = APARC_REAL_HEADER.replace(
+        "# Measure Cortex, WhiteSurfArea, White Surface Total Area, 87092.8, mm^2\n",
+        "# Measure Cortex, Number of Vertices, 999, unitless\n",
+    )
+    result = FreeSurferStatsParser().parse(write(tmp_path, "lh.aparc.stats", colliding))
+    assert not isinstance(result, ParseFailure)
+
+    assert result.measure_lines_declared == 3
+    assert result.measures_overwritten == 1
+    # The value the collided line carried is now absent from the output
+    # entirely — three lines went in, two measurements came out.
+    assert 999 not in result.header_measures.values()
+    assert any("already indexed" in w for w in result.warnings)
+
+
 def test_etiv_resolves_across_freesurfer_naming_variants(tmp_path: Path) -> None:
     """FS 5.1 writes ``IntraCranialVol, ICV``; FS 6 writes ``...Vol, eTIV``."""
     parser = FreeSurferStatsParser()

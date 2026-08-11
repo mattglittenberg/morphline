@@ -155,6 +155,29 @@ def assess_confounding(
             message="Single batch: scanner and time cannot be confounded.",
         )
 
+    # Zero variance in time makes every association with it zero *by
+    # construction*, and the R² branches below would read that as a clean
+    # design. It is not a finding: nothing was assessed. A cross-sectional
+    # dataset reaches this on every run, and reporting "harmonization is on
+    # firm ground" there is indistinguishable in the report from the same
+    # sentence earned by a genuinely well-spread longitudinal cohort.
+    if df["time_from_baseline_years"].nunique(dropna=True) < 2:
+        return ConfoundDiagnostics(
+            crosstab=empty,
+            correlation=float("nan"),
+            max_site_time_r2=float("nan"),
+            severity="not_assessable",
+            interpretable=True,
+            message=(
+                "Time from baseline is constant across every observation, so "
+                "scanner/time confounding cannot be assessed — there is no time "
+                "variance for site to explain. This is the expected result for a "
+                "cross-sectional dataset and is not evidence of a clean design. "
+                "Cross-sectional site effects may still be present; what cannot "
+                "be evaluated here is their entanglement with time."
+            ),
+        )
+
     time_bins = pd.cut(df["time_from_baseline_years"], bins=4)
     crosstab = pd.crosstab(df[batch_column], time_bins)
 

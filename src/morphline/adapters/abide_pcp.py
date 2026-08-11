@@ -35,7 +35,11 @@ from typing import Any, Final
 import pandas as pd
 
 from morphline.adapters.base import DatasetAdapter, SubjectSession
-from morphline.adapters.freesurfer_rows import measurement_rows, session_globals
+from morphline.adapters.freesurfer_rows import (
+    measurement_rows,
+    regions_in_scope,
+    session_globals,
+)
 from morphline.config import DatasetConfig
 from morphline.parsers import PARSER_VERSION, ParsedStatsFile
 from morphline.schema import MissingnessCause
@@ -184,24 +188,39 @@ class AbidePcpAdapter(DatasetAdapter):
             A frame of ``subject_id``, ``session_id``, ``missing_cause``.
         """
         found = {session.subject_id: bool(session.stats_files) for session in self.discover()}
+        # ``site`` travels with the roster because a session that produced no
+        # observations carries a site nowhere else, and those are precisely the
+        # sessions the by-site missingness breakdown counts (§5.2).
         rows: list[dict[str, Any]] = [
             {
                 "subject_id": subject_id,
                 "session_id": SESSION_ID,
                 "missing_cause": None if has_files else str(MissingnessCause.DERIVATIVE),
+                "site": self._site_for(subject_id),
             }
             for subject_id, has_files in found.items()
         ]
 
-        for numeric_id, record in self._phenotype_table().items():
-            subject_id = str(record.get("subject_id") or numeric_id)
-            if subject_id in found:
+        # Matched on the numeric participant ID, which is the only identifier
+        # the two sides share: the roster carries ``50642`` where the directory
+        # is named ``CMU_a_0050642``. Comparing the raw strings makes every
+        # roster entry look absent and fabricates an acquisition loss for the
+        # entire dataset — a funnel that reconciles on a false cause.
+        discovered_ids = {
+            numeric_id
+            for numeric_id in (_numeric_id(subject_id) for subject_id in found)
+            if numeric_id is not None
+        }
+
+        for numeric_id in self._phenotype_table():
+            if numeric_id in discovered_ids:
                 continue
             rows.append(
                 {
-                    "subject_id": subject_id,
+                    "subject_id": str(numeric_id),
                     "session_id": SESSION_ID,
                     "missing_cause": str(MissingnessCause.ACQUISITION),
+                    "site": self._phenotype_table()[numeric_id].get("site"),
                 }
             )
 
@@ -210,6 +229,17 @@ class AbidePcpAdapter(DatasetAdapter):
         return pd.DataFrame(rows).sort_values("subject_id", ignore_index=True)
 
     # -- canonicalization ----------------------------------------------------
+
+    def regions_in_scope(self, parsed: list[ParsedStatsFile]) -> set[str] | None:
+        """Return the regions this session's parsed tables could report.
+
+        Args:
+            parsed: Successfully parsed tables for one session.
+
+        Returns:
+            Canonical region names covered by the tables present.
+        """
+        return regions_in_scope(parsed)
 
     def to_canonical(
         self, subject_session: SubjectSession, parsed: list[ParsedStatsFile]
@@ -244,6 +274,14 @@ class AbidePcpAdapter(DatasetAdapter):
             df[key] = value
         return df
 
+    def _site_for(self, subject_id: str) -> str | None:
+        """Resolve a subject's site, preferring the roster over the directory name."""
+        phenotype = self._phenotype_for(subject_id)
+        site = phenotype.get("site")
+        if isinstance(site, str) and site:
+            return site
+        return site_from_subject_id(subject_id, collapse_subsample=self._collapse)
+
     def _session_metadata(self, subject_id: str, globals_: dict[str, Any]) -> dict[str, Any]:
         """Resolve acquisition and covariate metadata for one subject.
 
@@ -257,9 +295,7 @@ class AbidePcpAdapter(DatasetAdapter):
             The acquisition and covariate columns for every row of the session.
         """
         phenotype = self._phenotype_for(subject_id)
-        site = phenotype.get("site") or site_from_subject_id(
-            subject_id, collapse_subsample=self._collapse
-        )
+        site = self._site_for(subject_id)
         age = phenotype.get("age")
         dx = phenotype.get("dx")
         etiv = globals_.get("etiv")
@@ -286,10 +322,10 @@ class AbidePcpAdapter(DatasetAdapter):
 
     def _phenotype_for(self, subject_id: str) -> dict[str, Any]:
         """Look up one subject's phenotypic record by numeric participant ID."""
-        match = _NUMERIC_SUFFIX.search(subject_id)
-        if match is None:
+        numeric_id = _numeric_id(subject_id)
+        if numeric_id is None:
             return {}
-        return self._phenotype_table().get(int(match.group(1)), {})
+        return self._phenotype_table().get(numeric_id, {})
 
     def _phenotype_table(self) -> dict[int, dict[str, Any]]:
         """Load and normalise the phenotypic table, keyed by numeric ID.
@@ -329,6 +365,20 @@ class AbidePcpAdapter(DatasetAdapter):
                 "dx": _decode(_as_text(row[dx_column]) if dx_column else None, DX_CODES),
             }
         return self._phenotype
+
+
+def _numeric_id(subject_id: str) -> int | None:
+    """Extract the numeric participant ID from a subject directory name.
+
+    Args:
+        subject_id: Subject directory name, e.g. ``"CMU_a_0050642"``.
+
+    Returns:
+        The trailing numeric ID with zero padding removed, or ``None`` if the
+        name carries no numeric suffix.
+    """
+    match = _NUMERIC_SUFFIX.search(subject_id)
+    return None if match is None else int(match.group(1))
 
 
 def _first_present(columns: dict[str, Any], candidates: Sequence[str]) -> Any | None:

@@ -5,6 +5,7 @@ If a week slips, cut scope, not the date. Cut order is defined in §7.
 
 *Revision 2 — methodological and architectural corrections applied. Scope unchanged.*
 *Revision 3 (2026-08-09) — dataset strategy changed: OASIS-3 dropped (institutional registration), Track B is now OpenNeuro, IXI added as a stretch harmonization target. §0.3, §1.2, §1.3, §1.4, §1.5, §3.4, §4, §5.1, §5.3, §6, §7, §8 touched. Scope and ship date unchanged.*
+*Revision 4 (2026-08-10) — Track A split across two ABIDE sources after verifying that the FS6 deposit ships only aggregated tables: ABIDE PCP per-subject FreeSurfer 5.1 `.stats` is the parser target, the FS6 tables are a cross-check. §1.3, §4, §5.2 touched. Two parser defects this exposed are fixed in code. Scope and ship date unchanged.*
 
 ---
 
@@ -69,12 +70,22 @@ Accept a dataset only if you can locate actual `aseg.stats` / `aparc.stats` text
 
 ### 1.3 Two validation tracks, clearly labelled
 
-**Track A — cross-sectional harmonization and parser/integration validation: ABIDE I.**
-FreeSurfer 6 stats for ~1035 subjects across 17 sites, already reprocessed and redistributable (`github.com/dfsp-spirit/abide_preproc_smri_freesurfer6` plus associated Zenodo deposits). Real site effects, real batch sizes, real header variation, downloadable today.
+**Track A — cross-sectional harmonization and parser/integration validation: ABIDE I, from two sources.**
 
-What ABIDE validates: the FreeSurfer parser against real files, the dataset adapter, cross-sectional QC, cross-sectional ComBat, data accounting at real scale.
+The two ABIDE sources are not interchangeable, and the distinction decides whether the parser gets validated at all:
 
-ABIDE is unaffected by the access problem that removed OASIS-3: the reprocessed stats are redistributable and carry no institutional gate, so Track A is downloadable by one person today. That is why it stays Track A even though IXI is the better harmonization design (below).
+| Source | Shape | Size | Validates |
+|---|---|---|---|
+| **ABIDE PCP**, `s3://fcp-indi/data/Projects/ABIDE_Initiative/Outputs/freesurfer/5.1/<SUBJECT>/stats/` | **Per-subject `.stats` files**, FreeSurfer **5.1**, 10 per subject | 67 MB all files; ~36 MB for `aseg` + `?h.aparc` | The parser against real files, per-file provenance, real recon failures |
+| **dfsp-spirit**, `github.com/dfsp-spirit/abide_preproc_smri_freesurfer6` | **Aggregated `.tsv` tables**, FreeSurfer **6**, one row per subject | ~5 MB, whole repo | The adapter, ComBat, accounting — *not* the parser |
+
+Verified counts on the PCP bucket: **1112 subject directories across 17 sites** (NYU 184 largest, CMU 27 smallest), **1103** with all of `aseg.stats` + `lh/rh.aparc.stats`, and **9 incomplete** — 4 empty, 5 lh-only. The bucket is anonymously readable, no credentials and no requester-pays. Those 9 are an asset: real recon failures give the accounting funnel genuine attributable loss instead of synthetic loss.
+
+**Only per-subject `.stats` files validate the parser.** The dfsp-spirit tables are `asegstats2table` / `aparcstats2table` output — they bypass `FreeSurferStatsParser` entirely and exercise only the adapter. A pipeline whose ingestion story is "we parse FreeSurfer's native output" cannot demonstrate that against a table someone else already aggregated. Take PCP as the parser target; keep the FS6 tables as an independent cross-check that morphline's per-subject numbers aggregate to a table derived by different code. That cross-check is a stronger artifact than either source alone.
+
+Two constraints this creates. PCP is **FreeSurfer 5.1 only**, so "FreeSurfer 6 stats" is the wrong claim for the parser target — 5.1 emits no `SurfaceHoles`, which usefully exercises the null-never-zero Euler convention (§2.2) against real data in its null branch. And because the two sources are different FreeSurfer versions over overlapping subjects, **version is confounded with source: never pool them in one ComBat run.**
+
+ABIDE is unaffected by the access problem that removed OASIS-3: neither source carries an institutional gate, so Track A is downloadable by one person today. That is why it stays Track A even though IXI is the better harmonization design (below). Note the dfsp-spirit deposit is CC BY-**NC**-SA; its six Zenodo deposits are 42 GB of volumes, meshes, labels, and lGI, and **none of them contains stats files** — ignore them.
 
 **What ABIDE cannot validate: anything longitudinal.** It cannot exercise longitudinal QC rules, within-subject slope estimation, longitudinal ComBat, or the scanner/time confound. Do not describe a successful ABIDE run as validating the pipeline end to end. Say "cross-sectional real-data integration" and mean it.
 
@@ -595,8 +606,10 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 **Exit:** QC hits recall ≥ 0.95 and FPR ≤ 0.05 on fixtures; funnel reconciles with zero unexplained loss.
 
 ### Week 4 — Real cross-sectional data + harmonization
-- [ ] ABIDE adapter. First real end-to-end run — **explicitly labelled cross-sectional integration** (§1.3).
-- [ ] Expect the parser to break on real files. This is the week that happens. Budget for it.
+- [ ] ABIDE PCP adapter over per-subject FreeSurfer 5.1 `.stats` (§1.3). First real end-to-end run — **explicitly labelled cross-sectional integration**.
+- [ ] Expect the parser to break on real files. This is the week that happens. Budget for it. *Two real breaks were already found and fixed ahead of schedule* — see §1.3 and the parser's `_parse_measure` docstring — so treat that budget as still unspent, not as evidence the parser is clean.
+- [ ] Cross-check: morphline's per-subject PCP numbers, aggregated, against the dfsp-spirit FS6 tables. Different FreeSurfer versions, so expect systematic offsets — the check is on rank correlation and site-level structure, not equality.
+- [ ] Reconcile the 9 known-incomplete PCP subjects through the accounting funnel with reason codes (§1.3), not as a silent 1103-vs-1112 discrepancy.
 - [ ] ComBat with covariate preservation; configurable `min_batch_size` and small-batch policy (§2.3.3).
 - [ ] Batch-effect recovery, biological preservation, and non-attenuation tests on fixtures (§2.3.2).
 - [ ] Regime B (confounded) test asserting the expected attenuation.
@@ -644,7 +657,8 @@ Longitudinal real-data integration is **desirable, not required**. If the §1.2 
 
 A real-data run passes only if all of these are checked and reported:
 
-- **Counts match expectation:** subjects and sessions found reconcile against the dataset's published participant/session counts, with any discrepancy explained.
+- **Counts match expectation:** subjects and sessions found reconcile against the dataset's published participant/session counts, with any discrepancy explained. For ABIDE PCP the expected numbers are known in advance (§1.3): 1112 directories, 1103 complete, 9 incomplete by name — so this check has a right answer, and "1103 subjects ingested" without the 9 attributed is a failure.
+- **Header measures survive parsing:** measure counts per file are reported, not assumed. Both real breaks found in §1.3 were silent losses that no row-count or failure-rate check would have caught.
 - **Parsing:** success and failure counts reported; every failure has a reason code; failure rate below a stated threshold.
 - **Missingness:** rates reported by cause (§2.5.4), by site, and by timepoint.
 - **Metadata coverage:** site, scanner, field strength, and FreeSurfer version distributions reported; unexpected or unmapped values surfaced, not silently coerced.

@@ -213,3 +213,94 @@ def test_checksum_is_stable_and_content_dependent(tmp_path: Path) -> None:
     assert not isinstance(c, ParseFailure)
     assert a.checksum == b.checksum
     assert a.checksum != c.checksum
+
+
+APARC_REAL_HEADER = """\
+# Table of FreeSurfer cortical parcellation anatomical statistics
+# cvs_version $Id: mris_anatomical_stats.c,v 1.72 2011/03/02 00:04:26 nicks Exp $
+# subjectname CMU_a_0050642
+# hemi lh
+# annot aparc.annot
+# Measure Cortex, NumVert, Number of Vertices, 133321, unitless
+# Measure Cortex, WhiteSurfArea, White Surface Total Area, 87092.8, mm^2
+# Measure Cortex, MeanThickness, Mean Thickness, 2.47864, mm
+# ColHeaders StructName NumVert SurfArea GrayVol ThickAvg ThickStd MeanCurv GausCurv FoldInd CurvInd
+entorhinal  2100  1400  8200  3.3100  0.5100  0.1200  0.0300  12  2.5000
+precuneus  4100  2900  11000  2.3500  0.4800  0.1100  0.0280  18  3.1000
+"""
+
+ASEG_FS51 = """\
+# Title Segmentation Statistics
+# cvs_version $Id: mri_segstats.c,v 1.75.2.2 2011/04/27 22:18:58 nicks Exp $
+# subjectname CMU_a_0050642
+# Measure Cortex, CortexVol, Total cortical gray matter volume, 467564.035582, mm^3
+# Measure IntraCranialVol, ICV, Intracranial Volume, 1549336.766171, mm^3
+# ColHeaders Index SegId NVoxels Volume_mm3 StructName normMean normStdDev normMin normMax normRange
+  1  17  4100  4200.5  Left-Hippocampus  93.1  6.7  54  134  80
+"""
+
+
+def test_aparc_header_measures_sharing_a_short_name_do_not_collide(tmp_path: Path) -> None:
+    """Real ?h.aparc.stats reports all three measures as ``Cortex``.
+
+    Keying on the short name alone silently keeps one of the three. Regression
+    test for that collision, using the header shape ABIDE actually ships.
+    """
+    result = FreeSurferStatsParser().parse(write(tmp_path, "lh.aparc.stats", APARC_REAL_HEADER))
+    assert not isinstance(result, ParseFailure)
+    assert result.header_measures["NumVert"] == 133321
+    assert result.header_measures["WhiteSurfArea"] == 87092.8
+    assert result.header_measures["MeanThickness"] == 2.47864
+
+
+def test_etiv_resolves_across_freesurfer_naming_variants(tmp_path: Path) -> None:
+    """FS 5.1 writes ``IntraCranialVol, ICV``; FS 6 writes ``...Vol, eTIV``."""
+    parser = FreeSurferStatsParser()
+    fs51 = parser.parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    fs6 = parser.parse(write(tmp_path, "aseg6.stats", ASEG_FS6))
+    assert not isinstance(fs51, ParseFailure)
+    assert not isinstance(fs6, ParseFailure)
+    assert fs51.etiv == 1549336.766171
+    assert fs6.etiv == 1500000.0
+
+
+def test_measure_alias_and_short_name_both_resolve(tmp_path: Path) -> None:
+    """An alias is indexed alongside the short name, never instead of it."""
+    result = FreeSurferStatsParser().parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    assert not isinstance(result, ParseFailure)
+    assert result.header_measures["IntraCranialVol"] == 1549336.766171
+    assert result.header_measures["ICV"] == 1549336.766171
+    assert result.header_measures["Cortex"] == 467564.035582
+    assert result.header_measures["CortexVol"] == 467564.035582
+
+
+def test_long_description_is_not_indexed_as_an_alias(tmp_path: Path) -> None:
+    """Only whitespace-free second fields are aliases; descriptions are not."""
+    result = FreeSurferStatsParser().parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    assert not isinstance(result, ParseFailure)
+    assert "Intracranial Volume" not in result.header_measures
+    assert not any(" " in key for key in result.header_measures)
+
+
+def test_fixture_aparc_files_carry_the_real_header_measure_shape(fixture_tree: Path) -> None:
+    """The fixtures must reproduce the collision-prone ``Cortex`` header shape.
+
+    Omitting these lines is what let the short-name collision survive: the
+    parser was only ever asked to read aparc headers that had none. Guards the
+    realism of the fixture, not the parser.
+    """
+    aparc_files = sorted(fixture_tree.rglob("lh.aparc.stats"))
+    assert aparc_files, "fixture tree produced no lh.aparc.stats files"
+
+    parser = FreeSurferStatsParser()
+    for path in aparc_files:
+        raw = path.read_text(encoding="utf-8")
+        assert raw.count("# Measure Cortex,") == 3, f"{path} lost the three-measure header shape"
+
+        result = parser.parse(path)
+        assert not isinstance(result, ParseFailure)
+        for key in ("NumVert", "WhiteSurfArea", "MeanThickness"):
+            assert key in result.header_measures, f"{path} dropped {key}"
+        assert result.header_measures["MeanThickness"] == pytest.approx(
+            sum(float(row["ThickAvg"]) for row in result.rows) / len(result.rows), rel=1e-4
+        )

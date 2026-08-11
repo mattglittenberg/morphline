@@ -86,7 +86,9 @@ class ParsedStatsFile:
         checksum: SHA-256 of the file bytes, for the provenance chain (§1.5).
         table_type: Whether this is an aseg or aparc table.
         hemisphere: ``"lh"`` / ``"rh"`` for aparc tables, ``None`` for aseg.
-        header_measures: ``# Measure`` entries keyed by their short name.
+        header_measures: ``# Measure`` entries keyed by short name *and* by
+            alias where the file declares one, since neither alone is stable
+            across tables and FreeSurfer versions.
         header_fields: Other ``# key value`` header lines, verbatim.
         col_headers: Column names as declared by ``# ColHeaders``.
         rows: Data rows as dicts keyed by column name.
@@ -226,8 +228,9 @@ class FreeSurferStatsParser:
                 if parsed is None:
                     warnings.append(f"line {lineno}: unparseable # Measure line")
                     continue
-                key, value = parsed
-                measures[key] = value
+                keys, value = parsed
+                for key in keys:
+                    measures[key] = value
                 continue
 
             if (m := _COLHEADERS_RE.match(stripped)) is not None:
@@ -286,13 +289,23 @@ class FreeSurferStatsParser:
         )
 
     @staticmethod
-    def _parse_measure(body: str) -> tuple[str, float] | None:
-        """Parse the body of a ``# Measure`` line.
+    def _parse_measure(body: str) -> tuple[tuple[str, ...], float] | None:
+        """Parse the body of a ``# Measure`` line into its keys and its value.
 
-        The canonical shape is ``ShortName, LongDescription, value, unit``, but
-        FreeSurfer 5.3 writes some measures with only three fields, and hole
+        The canonical shape is ``ShortName, Alias, LongDescription, value, unit``,
+        but FreeSurfer 5.3 writes some measures with only three fields, and hole
         counts are written as bare ``# Measure lhSurfaceHoles, ..., 42, unitless``.
         Take the last numeric-looking field before the unit.
+
+        Both ``ShortName`` and ``Alias`` are returned, because they are not
+        interchangeable across tables. ``?h.aparc.stats`` reports every measure
+        under the short name ``Cortex``, so keying on the first field alone
+        collapses ``NumVert``, ``WhiteSurfArea``, and ``MeanThickness`` onto a
+        single entry; while ``aseg.stats`` on FreeSurfer 5.1 carries the
+        intracranial volume as ``IntraCranialVol, ICV`` and on 6+ as
+        ``EstimatedTotalIntraCranialVol, eTIV``, so neither field alone resolves
+        eTIV across versions. An alias is distinguished from a long description
+        by containing no whitespace.
         """
         parts = [p.strip() for p in body.split(",")]
         if len(parts) < 2:
@@ -300,10 +313,15 @@ class FreeSurferStatsParser:
         key = parts[0]
         if not key:
             return None
-        for candidate in reversed(parts[1:]):
+        for offset, candidate in enumerate(reversed(parts[1:])):
             value = _to_float(candidate)
-            if value is not None:
-                return key, value
+            if value is None:
+                continue
+            value_index = len(parts) - 1 - offset
+            alias = parts[1] if value_index > 1 else ""
+            if alias and alias != key and " " not in alias and _to_float(alias) is None:
+                return (key, alias), value
+            return (key,), value
         return None
 
     @staticmethod

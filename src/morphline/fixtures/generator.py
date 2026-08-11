@@ -141,9 +141,24 @@ def _aseg_header(
 
 
 def _aparc_header(
-    subject: str, session: str, hemisphere: str, version: str, columns: tuple[str, ...]
+    subject: str,
+    session: str,
+    hemisphere: str,
+    version: str,
+    columns: tuple[str, ...],
+    *,
+    num_vert: int,
+    white_surf_area: float,
+    mean_thickness: float,
 ) -> list[str]:
-    """Build ``?h.aparc.stats`` header lines for one hemisphere."""
+    """Build ``?h.aparc.stats`` header lines for one hemisphere.
+
+    Every FreeSurfer version reports all three cortical header measures under
+    the *same* short name, ``Cortex``, distinguishing them only by alias. The
+    fixtures reproduce that shape deliberately: a parser keyed on the short
+    name alone silently keeps one of the three, and omitting these lines from
+    the fixtures is what let that bug survive against real ABIDE files.
+    """
     return [
         "# Table of FreeSurfer cortical parcellation anatomical statistics",
         "#",
@@ -152,6 +167,9 @@ def _aparc_header(
         f"# subjectname {subject}_{session}",
         f"# hemi {hemisphere}",
         "# annot aparc.annot",
+        f"# Measure Cortex, NumVert, Number of Vertices, {num_vert}, unitless",
+        f"# Measure Cortex, WhiteSurfArea, White Surface Total Area, {white_surf_area:.1f}, mm^2",
+        f"# Measure Cortex, MeanThickness, Mean Thickness, {mean_thickness:.5f}, mm",
         f"# NTableCols {len(columns)}",
     ]
 
@@ -260,17 +278,20 @@ def _write_aparc(
             "CurvInd",
         ]
 
-    lines = _aparc_header(subject, session, hemisphere, version, tuple(columns))
-    lines.append("# ColHeaders " + " ".join(columns))
-
+    rows: list[str] = []
+    num_vert_total = 0
+    surf_area_total = 0
+    thicknesses: list[float] = []
     for structure, thickness in sorted(values.items()):
         struct_name = CANONICAL_TO_APARC.get(structure)
         if struct_name is None:
             continue
+        num_vert = int(rng.integers(1200, 6000))
+        surf_area = int(rng.integers(800, 4200))
         cells = {
             "StructName": struct_name,
-            "NumVert": f"{int(rng.integers(1200, 6000))}",
-            "SurfArea": f"{int(rng.integers(800, 4200))}",
+            "NumVert": f"{num_vert}",
+            "SurfArea": f"{surf_area}",
             "GrayVol": f"{int(rng.integers(3000, 14000))}",
             "ThickAvg": _format_number(thickness, decimal_comma=decimal_comma),
             "ThickStd": _format_number(float(abs(rng.normal(0.5, 0.1)))),
@@ -279,7 +300,24 @@ def _write_aparc(
             "FoldInd": f"{int(rng.integers(5, 40))}",
             "CurvInd": _format_number(float(abs(rng.normal(2.5, 0.8)))),
         }
-        lines.append("  ".join(cells[c] for c in columns))
+        rows.append("  ".join(cells[c] for c in columns))
+        num_vert_total += num_vert
+        surf_area_total += surf_area
+        thicknesses.append(thickness)
+
+    mean_thickness = sum(thicknesses) / len(thicknesses) if thicknesses else 0.0
+    lines = _aparc_header(
+        subject,
+        session,
+        hemisphere,
+        version,
+        tuple(columns),
+        num_vert=num_vert_total,
+        white_surf_area=float(surf_area_total),
+        mean_thickness=mean_thickness,
+    )
+    lines.append("# ColHeaders " + " ".join(columns))
+    lines.extend(rows)
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

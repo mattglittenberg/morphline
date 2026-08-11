@@ -79,6 +79,8 @@ The **modeling boundary** is decomposed, not labelled. `ModelExclusion` separate
 
 [src/morphline/config.py](src/morphline/config.py) loads YAML into frozen pydantic models with `extra="forbid"` — a typo in a threshold name must fail, not silently keep the default. The **fully resolved** config (defaults included) goes into the provenance block, on the rule that a reader holding only `report.html` can reconstruct the run.
 
+`fixtures:` is required only when fixtures are generated; `dataset.path` makes it optional, and a config with neither is rejected at load time. `random_seeds` is then empty for real-data runs rather than carrying a seed that governed nothing. `ingest_versions.json` is a sidecar beside `ingest_counters.json`, carrying observed versions and their verbatim declarations to the staged provenance step — `version_declaration` is deliberately *not* a canonical column, since the schema is an interface.
+
 ## Conventions that carry rationale
 
 - **`# Measure` lines are indexed by short name *and* alias.** Neither field alone is stable: `?h.aparc.stats` reports `NumVert`, `WhiteSurfArea`, and `MeanThickness` all under the short name `Cortex`, so short-name-only keying silently keeps one of three; and intracranial volume is `IntraCranialVol, ICV` on FreeSurfer 5.1 but `EstimatedTotalIntraCranialVol, eTIV` on 6+, so alias-only keying loses eTIV on 5.1. An alias is distinguished from a long description by containing no whitespace. Both failures were silent — no exception, no `ParseFailureCode`, no row-count change — and both were invisible to the fixtures until `_aparc_header` was taught to emit the real three-measure shape. When adding fixture realism, prefer reproducing a header shape that *collides* over one that merely parses.

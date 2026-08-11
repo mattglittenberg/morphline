@@ -75,14 +75,16 @@ def run_pipeline(
     fixtures_root = Path(fixtures_dir) if fixtures_dir else out / "fixtures"
     dataset_root = config.dataset.path or fixtures_root
 
-    if generate_fixtures and config.dataset.path is None:
+    if generate_fixtures and config.dataset.path is None and config.fixtures is not None:
         write_fixtures(config.fixtures, fixtures_root)
 
     provenance = Provenance.capture(
         dataset=config.dataset.name,
         dataset_version=config.dataset.version,
         run_parameters=config.resolved(),
-        random_seeds={"fixtures": config.fixtures.seed},
+        # A real-data run has no fixture seed. Recording one anyway would put a
+        # number in the provenance block that governed nothing.
+        random_seeds={"fixtures": config.fixtures.seed} if config.fixtures else {},
         input_path=str(dataset_root),
     )
 

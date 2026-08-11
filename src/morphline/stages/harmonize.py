@@ -171,9 +171,14 @@ def assess_confounding(
     r2 = 0.0 if total_ss == 0 else between_ss / total_ss
 
     codes = pd.Categorical(df[batch_column]).codes
+    # Either variable being constant makes the correlation undefined rather than
+    # zero, but no association is *detectable* either way, which is what 0.0
+    # already reports for a single-site run. A cross-sectional dataset holds
+    # time at 0 for every row and reaches this by construction.
+    time_varies = bool(df["time_from_baseline_years"].nunique(dropna=True) > 1)
     correlation = (
         0.0
-        if len(set(codes)) < 2
+        if len(set(codes)) < 2 or not time_varies
         else float(np.corrcoef(codes, df["time_from_baseline_years"])[0, 1])
     )
 

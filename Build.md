@@ -69,6 +69,19 @@ Dev: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy`, `pre-commit`.
 Two config directories, kept distinct because they serve different tools:
 
 - `config/` — morphline YAML (`default.yaml`, `test.yaml`, `recovery.yaml`)
+
+  A `fixtures:` block is required only when fixtures are generated. Setting `dataset.path` makes it optional, so a real-data config carries no fiction and provenance records no fixture seed that governed nothing:
+
+  ```yaml
+  dataset:
+    name: abide-i-pcp
+    version: freesurfer-5.1
+    adapter: abide-pcp
+    path: data/abide_pcp
+    phenotypic_csv: data/Phenotypic_V1_0b_preprocessed1.csv   # optional
+  ```
+
+  A config with neither `dataset.path` nor `fixtures:` is rejected at load time rather than defaulted — `FixtureConfig.sites` has no sensible default, and inventing sites would fabricate the site effects the harmonization tests exist to recover.
 - `conf/` — Nextflow profile configs (nf-core convention: `base.config`, `test.config`)
 
 Then `git init -b main` and an initial commit.

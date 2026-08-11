@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
 from morphline import __version__
 from morphline.adapters import SubjectFilter, build_adapter
@@ -42,11 +43,22 @@ OutdirOption = Annotated[Path, typer.Option("--outdir", "-o", help="Output direc
 
 
 def _load(config: Path) -> RunConfig:
-    """Load a configuration, exiting cleanly on user error."""
+    """Load a configuration, exiting cleanly on user error.
+
+    A rejected config is a user error, not a crash. ``extra="forbid"`` and the
+    model validators exist to catch typos and impossible combinations at load
+    time, so their messages are the useful output — a traceback buries them.
+    """
     try:
         return load_config(config)
     except FileNotFoundError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    except ValidationError as exc:
+        typer.secho(f"invalid configuration in {config}:", fg=typer.colors.RED, err=True)
+        for error in exc.errors():
+            location = ".".join(str(part) for part in error["loc"]) or "(root)"
+            typer.secho(f"  {location}: {error['msg']}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
 
 
@@ -63,6 +75,14 @@ def fixtures_generate(
 ) -> None:
     """Generate synthetic FreeSurfer stats fixtures with injected ground truth."""
     cfg = _load(config)
+    if cfg.fixtures is None:
+        typer.secho(
+            "this config has no fixtures block, so there is nothing to generate; "
+            "it points at a real dataset via dataset.path",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     truth = write_fixtures(cfg.fixtures, outdir)
     typer.echo(
         f"wrote {truth.manifest['n_files_written']} stats files "
@@ -313,13 +333,25 @@ def provenance(
         dataset=cfg.dataset.name,
         dataset_version=cfg.dataset.version,
         run_parameters=cfg.resolved(),
-        random_seeds={"fixtures": cfg.fixtures.seed},
+        random_seeds={"fixtures": cfg.fixtures.seed} if cfg.fixtures else {},
     )
     if observations and Path(observations).is_file():
         obs = read_canonical(observations)
         block.freesurfer_versions = sorted(
             {str(v) for v in obs["freesurfer_version"].dropna().unique()}
         )
+        # The verbatim declarations are not a canonical column, so they arrive
+        # by sidecar. Without this the staged path silently reports nothing for
+        # inputs that declare a version morphline could not parse — FreeSurfer
+        # 5.1 being exactly that case.
+        sidecar = Path(observations).parent / "ingest_versions.json"
+        if sidecar.is_file():
+            observed = json.loads(sidecar.read_text(encoding="utf-8"))
+            block.freesurfer_version_declarations = list(
+                observed.get("freesurfer_version_declarations", [])
+            )
+            if not block.freesurfer_versions:
+                block.freesurfer_versions = list(observed.get("freesurfer_versions", []))
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "provenance.json").write_text(
         json.dumps(block.as_dict(), indent=2, default=str), encoding="utf-8"

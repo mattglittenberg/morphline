@@ -379,3 +379,77 @@ def test_collapse_applies_when_no_phenotypic_site_is_available(abide_root: Path)
     sites = dict(zip(df["subject_id"], df["site"], strict=True))
     assert sites["CMU_a_0050642"] == "CMU"
     assert sites["UM_1_0050309"] == "UM"
+
+
+# -- configuration -----------------------------------------------------------
+
+
+def test_real_data_config_needs_no_fixtures_block(abide_root: Path, tmp_path: Path) -> None:
+    """A config pointing at real data must not have to carry fixture fiction."""
+    from morphline.config import load_config
+
+    path = tmp_path / "abide.yaml"
+    path.write_text(
+        "dataset:\n"
+        "  name: abide-i-pcp\n"
+        "  version: freesurfer-5.1\n"
+        "  adapter: abide-pcp\n"
+        f"  path: {abide_root}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(path)
+    assert cfg.fixtures is None
+    assert cfg.dataset.adapter == "abide-pcp"
+
+
+def test_fixtures_block_is_required_when_there_is_no_dataset_path(tmp_path: Path) -> None:
+    """With nothing to read and nothing to generate, the config is unusable.
+
+    Defaulting ``sites`` instead would fabricate the very site effects the
+    harmonization tests exist to recover.
+    """
+    from pydantic import ValidationError
+
+    from morphline.config import load_config
+
+    path = tmp_path / "broken.yaml"
+    path.write_text("dataset:\n  name: synthetic-v1\n  adapter: synthetic\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="fixtures are required"):
+        load_config(path)
+
+
+def test_real_data_run_records_no_fixture_seed(abide_root: Path, tmp_path: Path) -> None:
+    """A seed that governed nothing must not appear in provenance (§2.8)."""
+    import json
+
+    from morphline.config import load_config
+    from morphline.pipeline import run_pipeline
+
+    path = tmp_path / "abide.yaml"
+    path.write_text(
+        "dataset:\n"
+        "  name: abide-i-pcp\n"
+        "  version: freesurfer-5.1\n"
+        "  adapter: abide-pcp\n"
+        f"  path: {abide_root}\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    run_pipeline(load_config(path), out)
+    provenance = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["random_seeds"] == {}
+    assert provenance["freesurfer_versions"] == []
+    assert len(provenance["freesurfer_version_declarations"]) == 2
+
+
+def test_ingest_writes_a_versions_sidecar(abide_root: Path, tmp_path: Path) -> None:
+    """The staged path reaches declarations by sidecar, not by schema change."""
+    import json
+
+    from morphline.stages.ingest import run_ingest
+
+    out = tmp_path / "staged"
+    run_ingest(AbidePcpAdapter(abide_root, config()), out)
+    observed = json.loads((out / "ingest_versions.json").read_text(encoding="utf-8"))
+    assert observed["freesurfer_versions"] == []
+    assert len(observed["freesurfer_version_declarations"]) == 2

@@ -67,6 +67,18 @@ class IngestResult:
             "sessions_no_recognised_regions": self.sessions_no_recognised_regions,
         }
 
+    def observed_versions(self) -> dict[str, list[str]]:
+        """Return the observed versions, for the provenance stage's sidecar.
+
+        ``version_declaration`` is not a canonical column — the schema is an
+        interface and this does not belong in it — so the staged path needs a
+        sidecar to reach what the in-process path holds in memory.
+        """
+        return {
+            "freesurfer_versions": self.freesurfer_versions,
+            "freesurfer_version_declarations": self.freesurfer_version_declarations,
+        }
+
     def failures_frame(self) -> pd.DataFrame:
         """Return parse failures as a frame for the accounting stage."""
         if not self.failures:
@@ -161,5 +173,8 @@ def run_ingest(adapter: DatasetAdapter, outdir: Path | str) -> IngestResult:
     # Nextflow process without re-deriving them (and without guessing).
     (out / "ingest_counters.json").write_text(
         json.dumps(result.counters(), indent=2), encoding="utf-8"
+    )
+    (out / "ingest_versions.json").write_text(
+        json.dumps(result.observed_versions(), indent=2), encoding="utf-8"
     )
     return result

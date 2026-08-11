@@ -227,11 +227,35 @@ class RunConfig(_Base):
     """Top-level run configuration."""
 
     dataset: DatasetConfig = DatasetConfig()
-    fixtures: FixtureConfig
+    #: Required only when fixtures are generated. A real-data run reads
+    #: ``dataset.path`` and never touches the generator, so demanding an unused
+    #: ``fixtures:`` block would make every real config carry fiction.
+    fixtures: FixtureConfig | None = None
     qc: QCConfig = QCConfig()
     harmonization: HarmonizationConfig = HarmonizationConfig()
     analysis: AnalysisConfig = AnalysisConfig()
     report: ReportConfig = ReportConfig()
+
+    @model_validator(mode="after")
+    def _require_fixtures_when_generating(self) -> RunConfig:
+        """Demand a ``fixtures:`` block exactly when one will be used.
+
+        Absent ``dataset.path`` there is no data to read, so a missing block is
+        a config error rather than something to paper over with defaults —
+        ``FixtureConfig.sites`` in particular has no sensible default, and
+        silently inventing sites would fabricate the site effects the
+        harmonization tests exist to recover.
+
+        Raises:
+            ValueError: If fixtures would be generated but none were configured.
+        """
+        if self.dataset.path is None and self.fixtures is None:
+            raise ValueError(
+                "fixtures are required when dataset.path is unset: with no dataset root "
+                "there is nothing to ingest. Set dataset.path for a real dataset, or add "
+                "a fixtures block to generate one."
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_batch_guard(self) -> RunConfig:
@@ -242,7 +266,7 @@ class RunConfig(_Base):
         unrunnable. But a config where *every* batch is below threshold is
         almost always a mistake worth catching at load time.
         """
-        if self.harmonization.enabled and self.fixtures.sites:
+        if self.harmonization.enabled and self.fixtures and self.fixtures.sites:
             largest = max(site.n_subjects for site in self.fixtures.sites)
             if largest < self.harmonization.min_batch_size:
                 object.__setattr__(self, "_all_batches_small", True)

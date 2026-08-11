@@ -21,3 +21,6 @@ results/
 .DS_Store
 .idea/
 .vscode/
+
+# source datasets (not redistributable)
+data/

@@ -40,16 +40,15 @@ These are §1.2 / §1.3 day-1 items. None gate weeks 1–2, all gate week 4.
 - [ ] **Download ABIDE PCP per-subject FreeSurfer 5.1 stats** — the Track A *parser* target, ~36 MB for the core three files, anonymous HTTPS, no credentials:
 
   ```bash
-  BASE=https://s3.amazonaws.com/fcp-indi/data/Projects/ABIDE_Initiative/Outputs/freesurfer/5.1
-  while read -r s; do
-    mkdir -p "abide_pcp/$s/stats"
-    for f in aseg.stats lh.aparc.stats rh.aparc.stats; do
-      curl -sf "$BASE/$s/stats/$f" -o "abide_pcp/$s/stats/$f" || echo "MISS $s/$f" >&2
-    done
-  done < subjects.txt
+  printf '\n# source datasets (not redistributable)\ndata/\n' >> .gitignore
+  scripts/fetch_abide_pcp.sh
   ```
 
-  Subject directory names come from listing the `5.1/` prefix with `delimiter=/`. Expect 1112 directories, 1103 complete, and 9 known-incomplete (`UCLA_51233`, `UCLA_51243`, `UCLA_51270`, `UM_2_0050423` empty; `UCLA_51244`, `UCLA_51310`, `UM_1_0050309`, `UM_1_0050323`, `UM_1_0050328` lh-only). The 9 `MISS` lines are the expected output, not a broken download.
+  [scripts/fetch_abide_pcp.sh](scripts/fetch_abide_pcp.sh) builds `data/subjects.txt` from the bucket listing (which is paginated — two requests, not one) and writes `data/abide_pcp/<SUBJECT>/stats/`. Serial, ~10–20 minutes, resumable: non-empty files are skipped, so an interrupted run is simply re-run. `--all-tables` fetches all 10 stats files (~67 MB) instead of the three the 28-test region set needs.
+
+  **Destination must be gitignored.** ABIDE PCP is CC BY-NC-SA and this repo is headed for public; `data/` is neither `work/` (Nextflow's default `workDir`, which `nextflow clean` may delete) nor `results/` (pipeline output). The script warns via `git check-ignore` if the destination is not ignored.
+
+  Expect 1112 subject directories, 1103 complete, 9 known-incomplete (`UCLA_51233`, `UCLA_51243`, `UCLA_51270`, `UM_2_0050423` empty; `UCLA_51244`, `UCLA_51310`, `UM_1_0050309`, `UM_1_0050323`, `UM_1_0050328` lh-only). That is **22 missing files, not 9** — the lh-only subjects lack `aseg.stats` as well as `rh.aparc.stats`. Final counts: `aseg.stats` 1103, `lh.aparc.stats` 1108, `rh.aparc.stats` 1103. The script classifies each gap as known or unknown and exits non-zero only on the latter, because 22 expected failures would otherwise hide a real one.
 - [ ] **Clone the dfsp-spirit FS6 tables** — `git clone --depth 1 https://github.com/dfsp-spirit/abide_preproc_smri_freesurfer6.git`, ~5 MB. These are *aggregated* `.tsv` tables, so they validate the adapter and ComBat but **not** the parser (§1.3). Skip all six Zenodo deposits — 42 GB, no stats files among them. License is CC BY-**NC**-SA.
 - [ ] **Run the §1.2 dataset audit** (timebox 4 hours) on candidate OpenNeuro accessions. Accept a dataset only if actual `aseg.stats` / `aparc.stats` text files are locatable — not merely a `derivatives/` directory that turns out to hold MRIQC or fMRIPrep output — *and* it has ≥2 structural sessions for a usable number of subjects. **This is now the Track B access task.** If nothing clears the timebox, Track B is synthetic-only and that is an acceptable v1.0 (§0.3).
 - [ ] **Optional, week 6 or later:** check whether a third-party IXI FreeSurfer derivative deposit exists. IXI ships NIfTI only; if no `.stats` exist, the adapter needs ~600 × `recon-all` and stays post-ship (§1.3). Do not start that compute during weeks 1–6.

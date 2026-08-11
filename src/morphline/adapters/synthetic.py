@@ -18,12 +18,10 @@ from typing import Any
 import pandas as pd
 
 from morphline.adapters.base import DatasetAdapter, SubjectSession
-from morphline.adapters.freesurfer_regions import APARC_STRUCT_MAP, ASEG_STRUCT_MAP
+from morphline.adapters.freesurfer_rows import measurement_rows, session_globals
 from morphline.coerce import as_float, as_str
 from morphline.config import DatasetConfig
-from morphline.parsers import PARSER_VERSION, ParsedStatsFile, StatsTableType
-from morphline.regions import region_key
-from morphline.schema import Hemisphere, MeasureType
+from morphline.parsers import PARSER_VERSION, ParsedStatsFile
 
 
 class SyntheticAdapter(DatasetAdapter):
@@ -135,26 +133,7 @@ class SyntheticAdapter(DatasetAdapter):
             return pd.DataFrame()
 
         meta = self._session_metadata(subject_session)
-        ingested_at = dt.datetime.now(dt.UTC).isoformat()
-
-        # Hole counts and eTIV live in the aseg header but describe the whole
-        # session, so they are hoisted onto every row of it.
-        holes_lh = holes_rh = etiv = None
-        fs_version: str | None = None
-        for record in parsed:
-            fs_version = fs_version or record.freesurfer_version
-            if record.table_type is StatsTableType.ASEG:
-                holes_lh = record.surface_holes_lh
-                holes_rh = record.surface_holes_rh
-                etiv = record.etiv
-
-        rows: list[dict[str, Any]] = []
-        for record in parsed:
-            if record.table_type is StatsTableType.ASEG:
-                rows.extend(self._aseg_rows(record))
-            else:
-                rows.extend(self._aparc_rows(record))
-
+        rows = measurement_rows(parsed)
         if not rows:
             return pd.DataFrame()
 
@@ -163,71 +142,13 @@ class SyntheticAdapter(DatasetAdapter):
         df["dataset_version"] = self.dataset_version
         df["subject_id"] = subject_session.subject_id
         df["session_id"] = subject_session.session_id
-        df["etiv"] = etiv
-        df["surface_holes_lh"] = holes_lh
-        df["surface_holes_rh"] = holes_rh
-        df["freesurfer_version"] = fs_version
         df["parser_version"] = PARSER_VERSION
-        df["ingested_at"] = ingested_at
+        df["ingested_at"] = dt.datetime.now(dt.UTC).isoformat()
+        for key, value in session_globals(parsed).items():
+            df[key] = value
         for key, value in meta.items():
             df[key] = value
         return df
-
-    def _aseg_rows(self, record: ParsedStatsFile) -> list[dict[str, Any]]:
-        """Extract v1 subcortical volumes from one parsed aseg table."""
-        rows: list[dict[str, Any]] = []
-        for row in record.rows:
-            struct_name = row.get("StructName")
-            if not isinstance(struct_name, str):
-                continue
-            mapped = ASEG_STRUCT_MAP.get(struct_name)
-            if mapped is None:
-                continue
-            structure, hemisphere = mapped
-            volume = row.get("Volume_mm3")
-            if not isinstance(volume, float):
-                continue
-            rows.append(
-                {
-                    "region": region_key(structure, hemisphere),
-                    "hemisphere": hemisphere.value,
-                    "measure_type": str(MeasureType.VOLUME),
-                    "value": volume,
-                    "unit": "mm^3",
-                    "source_file": str(record.source_file),
-                    "source_file_checksum": record.checksum,
-                }
-            )
-        return rows
-
-    def _aparc_rows(self, record: ParsedStatsFile) -> list[dict[str, Any]]:
-        """Extract v1 cortical thicknesses from one parsed aparc table."""
-        if record.hemisphere not in {"lh", "rh"}:
-            return []
-        hemisphere = Hemisphere(record.hemisphere)
-        rows: list[dict[str, Any]] = []
-        for row in record.rows:
-            struct_name = row.get("StructName")
-            if not isinstance(struct_name, str):
-                continue
-            structure = APARC_STRUCT_MAP.get(struct_name)
-            if structure is None:
-                continue
-            thickness = row.get("ThickAvg")
-            if not isinstance(thickness, float):
-                continue
-            rows.append(
-                {
-                    "region": region_key(structure, hemisphere),
-                    "hemisphere": hemisphere.value,
-                    "measure_type": str(MeasureType.THICKNESS),
-                    "value": thickness,
-                    "unit": "mm",
-                    "source_file": str(record.source_file),
-                    "source_file_checksum": record.checksum,
-                }
-            )
-        return rows
 
     def _session_metadata(self, subject_session: SubjectSession) -> dict[str, Any]:
         """Look up acquisition and covariate metadata for one session."""

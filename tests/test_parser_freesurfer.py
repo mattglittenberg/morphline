@@ -304,3 +304,51 @@ def test_fixture_aparc_files_carry_the_real_header_measure_shape(fixture_tree: P
         assert result.header_measures["MeanThickness"] == pytest.approx(
             sum(float(row["ThickAvg"]) for row in result.rows) / len(result.rows), rel=1e-4
         )
+
+
+def test_cvs_revision_is_not_mistaken_for_a_freesurfer_version(tmp_path: Path) -> None:
+    """FS 5.1 declares the source file's CVS revision, not a version.
+
+    Taking ``$Id: mri_segstats.c,v 1.75.2.2 ...$`` at face value both invents a
+    version the file never stated and makes one release look like two, since
+    mri_segstats and mris_anatomical_stats carry different revisions.
+    """
+    parser = FreeSurferStatsParser()
+    aseg = parser.parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    aparc = parser.parse(write(tmp_path, "lh.aparc.stats", APARC_REAL_HEADER))
+    assert not isinstance(aseg, ParseFailure)
+    assert not isinstance(aparc, ParseFailure)
+    assert aseg.freesurfer_version is None
+    assert aparc.freesurfer_version is None
+
+
+def test_version_declaration_is_kept_verbatim(tmp_path: Path) -> None:
+    """A null version must still be traceable to what the file declared."""
+    result = FreeSurferStatsParser().parse(write(tmp_path, "aseg.stats", ASEG_FS51))
+    assert not isinstance(result, ParseFailure)
+    assert result.version_declaration is not None
+    assert result.version_declaration.startswith("$Id: mri_segstats.c")
+
+
+def test_semantic_versions_still_parse(tmp_path: Path) -> None:
+    """FS 6 and 7 declare a real version, and it is used as-is."""
+    result = FreeSurferStatsParser().parse(write(tmp_path, "aseg.stats", ASEG_FS6))
+    assert not isinstance(result, ParseFailure)
+    assert result.freesurfer_version == "6.0.0"
+    assert result.version_declaration == "6.0.0"
+
+
+def test_two_freesurfer_51_tables_do_not_look_like_two_releases(tmp_path: Path) -> None:
+    """The regression this fixes: one dataset reporting two FreeSurfer versions."""
+    from morphline.adapters import AbidePcpAdapter
+    from morphline.config import DatasetConfig
+    from morphline.stages.ingest import ingest
+
+    stats = tmp_path / "abide" / "CMU_a_0050642" / "stats"
+    stats.mkdir(parents=True)
+    (stats / "aseg.stats").write_text(ASEG_FS51, encoding="utf-8")
+    (stats / "lh.aparc.stats").write_text(APARC_REAL_HEADER, encoding="utf-8")
+
+    result = ingest(AbidePcpAdapter(tmp_path / "abide", DatasetConfig(adapter="abide-pcp")))
+    assert result.freesurfer_versions == []
+    assert len(result.freesurfer_version_declarations) == 2

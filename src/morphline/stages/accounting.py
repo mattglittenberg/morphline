@@ -23,7 +23,7 @@ from typing import Any
 
 import pandas as pd
 
-from morphline.schema import MissingnessCause, QCStatus
+from morphline.schema import MissingnessCause, ModelExclusion, QCStatus
 
 
 @dataclass(slots=True)
@@ -140,6 +140,7 @@ def build_accounting(
     sessions_no_recognised_regions: int = 0,
     qc_observations: pd.DataFrame | None = None,
     modeled_observations: int | None = None,
+    model_fits: pd.DataFrame | None = None,
 ) -> AccountingReport:
     """Assemble the accounting report for one run.
 
@@ -155,6 +156,11 @@ def build_accounting(
             canonical regions.
         qc_observations: Observations after QC, carrying ``qc_status``.
         modeled_observations: Observations that actually entered the model.
+        model_fits: Per-region fit summary carrying ``region`` and
+            ``n_observations``. Without it the shortfall at the modeling
+            boundary can be counted but not explained, so it is reported as
+            :attr:`~morphline.schema.ModelExclusion.UNATTRIBUTED` rather than
+            attributed to a guess.
 
     Returns:
         The assembled report. Call :meth:`AccountingReport.reconcile` to verify
@@ -325,22 +331,84 @@ def build_accounting(
     # --- Analysis ----------------------------------------------------------
     if modeled_observations is not None:
         lost = qc_passing - modeled_observations
-        # Not data loss: observations for regions the model did not fit. Named
-        # precisely so the funnel does not read as though the pipeline dropped
-        # them, while still being accounted for rather than silently ignored.
-        causes = {"outside_modeled_region_set": lost} if lost > 0 else {}
         report.funnel.append(
             FunnelStage(
                 boundary="modeled observations",
                 unit="observations",
                 count=modeled_observations,
                 lost=max(0, lost),
-                causes=causes,
+                causes=_model_exclusion_causes(
+                    lost,
+                    qc_observations if qc_observations is not None else observations,
+                    model_fits,
+                ),
             )
         )
 
     report.missingness = planned_missing
     return report
+
+
+def _model_exclusion_causes(
+    lost: int,
+    observations: pd.DataFrame,
+    model_fits: pd.DataFrame | None,
+) -> dict[str, int]:
+    """Attribute the shortfall at the modeling boundary to actual causes.
+
+    Two things separate observations that passed QC from observations that were
+    fitted, and they are counted rather than inferred from each other: regions
+    the model never attempted, and rows a fitted region had to drop because a
+    model term was null.
+
+    Args:
+        lost: Observations that passed QC but were not modeled.
+        observations: The frame the modeling stage drew from, used to count how
+            many observations each attempted region actually offered.
+        model_fits: Per-region fit summary, or ``None`` when unavailable.
+
+    Returns:
+        Causes summing exactly to ``lost``. When ``model_fits`` is absent, or
+        the arithmetic does not close, the residual is reported as
+        unattributed — a funnel that reconciles on a fabricated cause is worse
+        than one that admits the gap.
+    """
+    if lost <= 0:
+        return {}
+    if model_fits is None or model_fits.empty or "region" not in model_fits.columns:
+        return {str(ModelExclusion.UNATTRIBUTED): lost}
+
+    # Mirror the modeling stage's own inclusion filter. Counting against a
+    # different denominator than the model used would push the difference into
+    # the residual and report it as unattributed.
+    considered = observations
+    if "analysis_included" in observations.columns:
+        considered = observations[observations["analysis_included"].fillna(False)]
+
+    attempted = set(model_fits["region"].dropna())
+    if "region" in considered.columns:
+        available = int(considered["region"].isin(attempted).sum())
+    else:
+        available = 0
+
+    outside = max(0, len(considered) - available)
+    fitted = (
+        int(model_fits["n_observations"].fillna(0).sum())
+        if "n_observations" in model_fits.columns
+        else 0
+    )
+    incomplete = max(0, available - fitted)
+
+    causes = {
+        str(ModelExclusion.OUTSIDE_REGION_SET): outside,
+        str(ModelExclusion.INCOMPLETE_COVARIATES): incomplete,
+    }
+    causes = {code: count for code, count in causes.items() if count > 0}
+
+    residual = lost - sum(causes.values())
+    if residual > 0:
+        causes[str(ModelExclusion.UNATTRIBUTED)] = residual
+    return causes
 
 
 def _flag_counts(qc_observations: pd.DataFrame) -> dict[str, int]:

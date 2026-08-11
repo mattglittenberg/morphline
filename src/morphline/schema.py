@@ -75,6 +75,28 @@ class MissingnessCause(StrEnum):
     EXCLUDED_QC = "excluded_qc"
 
 
+class ModelExclusion(StrEnum):
+    """Why a QC-passing observation did not reach the model.
+
+    Deliberately separate from :class:`MissingnessCause`, because nothing is
+    missing here: the observation exists and passed QC, it simply was not an
+    input to a fit. The distinction matters because the reasons have opposite
+    implications. A region outside the fitted set is a scope decision. A row
+    dropped for incomplete covariates is a data limitation that biases the
+    remaining sample if the incompleteness is not random.
+
+    Collapsing them into one label lets the funnel reconcile while reporting a
+    cause that is false — which is worse than not reconciling, since it looks
+    like an answer.
+    """
+
+    OUTSIDE_REGION_SET = "outside_modeled_region_set"
+    INCOMPLETE_COVARIATES = "incomplete_model_covariates"
+    #: The count is known but the model's per-region inputs were not supplied,
+    #: so no cause can be established. Naming the ignorance beats guessing.
+    UNATTRIBUTED = "not_modeled_cause_unavailable"
+
+
 # --- Column groups, mirroring the §1.5 layout -------------------------------
 
 IDENTITY_COLUMNS: Final = (

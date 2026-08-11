@@ -69,7 +69,12 @@ class Provenance:
         nextflow_version: Nextflow version, when run under Nextflow.
         parser_version: Version of the stats parser used.
         freesurfer_versions: Versions actually observed in the input data —
-            not a configured value, an empirical one.
+            not a configured value, an empirical one. Empty when the inputs
+            declare no semantic version, as FreeSurfer 5.1 does not.
+        freesurfer_version_declarations: What the input headers declared,
+            verbatim. Populated even when no semantic version could be derived,
+            so an empty ``freesurfer_versions`` is distinguishable from inputs
+            that said nothing at all.
         dataset: Dataset identifier.
         dataset_version: Dataset version, accession, or fixture seed.
         input_path: Dataset root as ingested.
@@ -90,6 +95,7 @@ class Provenance:
     nextflow_version: str | None = None
     parser_version: str = PARSER_VERSION
     freesurfer_versions: list[str] = field(default_factory=list)
+    freesurfer_version_declarations: list[str] = field(default_factory=list)
     dataset: str = ""
     dataset_version: str = ""
     input_path: str | None = None

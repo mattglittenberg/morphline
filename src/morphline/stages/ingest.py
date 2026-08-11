@@ -35,6 +35,10 @@ class IngestResult:
         sessions_no_recognised_regions: Sessions that parsed cleanly but
             contained none of the regions in the canonical vocabulary.
         freesurfer_versions: Versions actually observed in the data.
+        freesurfer_version_declarations: Version strings the headers declared,
+            verbatim. FreeSurfer 5.1 declares a CVS revision rather than a
+            version, so this can be populated while
+            ``freesurfer_versions`` is empty.
 
     Note:
         The three loss counters are tracked separately and exactly, rather
@@ -51,6 +55,7 @@ class IngestResult:
     sessions_all_files_rejected: int = 0
     sessions_no_recognised_regions: int = 0
     freesurfer_versions: list[str] = field(default_factory=list)
+    freesurfer_version_declarations: list[str] = field(default_factory=list)
 
     def counters(self) -> dict[str, int]:
         """Return the loss counters, for the accounting stage's JSON sidecar."""
@@ -85,6 +90,7 @@ def ingest(adapter: DatasetAdapter) -> IngestResult:
     frames: list[pd.DataFrame] = []
     failures: list[ParseFailure] = []
     versions: set[str] = set()
+    declarations: set[str] = set()
     files_discovered = 0
     sessions_discovered = 0
     sessions_without_files = 0
@@ -107,6 +113,8 @@ def ingest(adapter: DatasetAdapter) -> IngestResult:
             parsed.append(result)
             if result.freesurfer_version:
                 versions.add(result.freesurfer_version)
+            if result.version_declaration:
+                declarations.add(result.version_declaration)
 
         if not parsed:
             sessions_all_files_rejected += 1
@@ -129,6 +137,7 @@ def ingest(adapter: DatasetAdapter) -> IngestResult:
         sessions_all_files_rejected=sessions_all_files_rejected,
         sessions_no_recognised_regions=sessions_no_recognised_regions,
         freesurfer_versions=sorted(versions),
+        freesurfer_version_declarations=sorted(declarations),
     )
 
 

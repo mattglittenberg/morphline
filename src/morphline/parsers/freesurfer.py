@@ -51,6 +51,11 @@ _KEYVAL_RE: Final = re.compile(r"^#\s*(?P<key>[A-Za-z][A-Za-z0-9_]*)\s+(?P<value
 #: Header keys carrying the FreeSurfer version string, in preference order.
 _VERSION_KEYS: Final = ("annotationfileversion", "cvs_version", "AnnotationFileVersion")
 
+#: A declared version counts as a version only if it starts with a number.
+#: FreeSurfer 5.1 declares a CVS ``$Id:`` blob here instead (see
+#: :meth:`FreeSurferStatsParser._version_from_header`).
+_VERSION_LIKE: Final = re.compile(r"^\d+(?:\.\d+)*")
+
 #: Fallback columns for ``aseg.stats`` written without a ``# ColHeaders`` line.
 _ASEG_FALLBACK_COLS: Final = (
     "Index",
@@ -92,7 +97,11 @@ class ParsedStatsFile:
         header_fields: Other ``# key value`` header lines, verbatim.
         col_headers: Column names as declared by ``# ColHeaders``.
         rows: Data rows as dicts keyed by column name.
-        freesurfer_version: Version string if the header declared one.
+        freesurfer_version: Semantic version, if the header declared one that
+            is actually a version. ``None`` on FreeSurfer 5.1, which declares a
+            CVS revision instead.
+        version_declaration: Whatever the header declared, verbatim, so a null
+            ``freesurfer_version`` can still be traced to what the file said.
         warnings: Non-fatal structural oddities worth surfacing.
     """
 
@@ -105,6 +114,7 @@ class ParsedStatsFile:
     col_headers: tuple[str, ...]
     rows: tuple[dict[str, str | float], ...]
     freesurfer_version: str | None
+    version_declaration: str | None = None
     warnings: tuple[str, ...] = field(default=())
 
     @property
@@ -285,6 +295,7 @@ class FreeSurferStatsParser:
             col_headers=col_headers,
             rows=tuple(rows),
             freesurfer_version=self._version_from_header(header_fields),
+            version_declaration=self._version_declaration(header_fields),
             warnings=tuple(warnings),
         )
 
@@ -325,11 +336,37 @@ class FreeSurferStatsParser:
         return None
 
     @staticmethod
-    def _version_from_header(header_fields: dict[str, str]) -> str | None:
+    def _version_declaration(header_fields: dict[str, str]) -> str | None:
+        """Return the version string the header declares, verbatim."""
         for key in _VERSION_KEYS:
             if key in header_fields:
                 return header_fields[key]
         return None
+
+    @staticmethod
+    def _version_from_header(header_fields: dict[str, str]) -> str | None:
+        """Derive a FreeSurfer version from the header's declaration.
+
+        FreeSurfer 6 and 7 declare a semantic version (``# cvs_version 7.2.0``),
+        but 5.1 declares the *source file's* CVS revision instead
+        (``$Id: mri_segstats.c,v 1.75.2.2 ... $``), which names neither
+        FreeSurfer nor its version — and differs between ``mri_segstats`` and
+        ``mris_anatomical_stats``, so taking it at face value makes one release
+        look like two.
+
+        A declaration that is not version-like therefore yields ``None``, on the
+        same rule as surface holes (§2.2): a null states that the file does not
+        say, where a wrong value would be repeated into provenance as though it
+        did. The verbatim declaration is kept on
+        :attr:`ParsedStatsFile.version_declaration`, and the release a
+        derivative distribution belongs to is the adapter's ``dataset_version``,
+        which is knowledge about the download rather than about the file.
+        """
+        declaration = FreeSurferStatsParser._version_declaration(header_fields)
+        if declaration is None:
+            return None
+        match = _VERSION_LIKE.match(declaration.strip())
+        return match.group(0) if match else None
 
     @staticmethod
     def _hemisphere_from_header(header_fields: dict[str, str]) -> str | None:

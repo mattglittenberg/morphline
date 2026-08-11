@@ -97,7 +97,11 @@ Parse failures **never** escape as exceptions — they become reason-coded recor
 
 ### Step 4. Adapters — `src/morphline/adapters/`
 
-`base.py` defines the `DatasetAdapter` protocol (discover files; resolve subject/session IDs, site, scanner, field strength, dates, demographics). `synthetic.py` is the only implementation now; ABIDE / OpenNeuro (and IXI if §1.3's stretch lands) slot in later with **zero downstream change** (§1.4).
+`base.py` defines the `DatasetAdapter` protocol (discover files; resolve subject/session IDs, site, scanner, field strength, dates, demographics). `synthetic.py` and `abide_pcp.py` implement it; OpenNeuro (and IXI if §1.3's stretch lands) slot in later with **zero downstream change** (§1.4).
+
+`freesurfer_rows.py` holds the table → measurement-row conversion both adapters share. Only *metadata* is dataset-specific; two copies of the row extraction would drift, and the drift would surface as datasets disagreeing about what a thickness is.
+
+`abide_pcp.py` reads its three tables by **exact filename**, never by `*.stats` glob. The parser identifies tables by filename, so `lh.aparc.a2009s.stats` is also an lh aparc table and `lh.entorhinal_exvivo.stats` re-reports a structure the Desikan-Killiany table already reports — globbing emits two rows for one `subject × session × region × measure` key and the schema rejects that (§5.2). Correctly: neither row is wrong, they answer different questions. `--all-tables` downloads make this reachable, so a test asserts it.
 
 **The architectural rule is enforced by a test, not a comment.** `tests/test_architecture_boundary.py` walks the AST of `stages/*` asserting no import of `morphline.parsers`, and greps those modules for `freesurfer`, `aseg`, `aparc`, `.stats`. A failing test is the only enforcement that survives contact with a deadline.
 

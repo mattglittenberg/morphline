@@ -212,9 +212,15 @@ class DatasetConfig(_Base):
 
     name: str = "synthetic-v1"
     version: str = "0.1.0"
-    adapter: Literal["synthetic"] = "synthetic"
+    adapter: Literal["synthetic", "abide-pcp"] = "synthetic"
     #: Root path for a real dataset. ``None`` means fixtures are generated.
     path: Path | None = None
+    #: Phenotypic sidecar supplying covariates the stats files do not carry.
+    #: Ignored by adapters that resolve their own metadata.
+    phenotypic_csv: Path | None = None
+    #: Treat separately-acquired sub-samples of one institution as one site.
+    #: Trades batch purity for batch size (§2.3.3).
+    collapse_site_subsample: bool = False
 
 
 class RunConfig(_Base):

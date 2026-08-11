@@ -15,7 +15,11 @@ import pytest
 from morphline.adapters import SyntheticAdapter
 from morphline.config import FixtureConfig
 from morphline.fixtures import write_fixtures
-from morphline.stages.accounting import FunnelStage, build_accounting
+from morphline.stages.accounting import (
+    FunnelStage,
+    _model_exclusion_causes,
+    build_accounting,
+)
 from morphline.stages.ingest import ingest
 from morphline.stages.qc import apply_qc
 
@@ -177,3 +181,68 @@ def test_funnel_reconciles_under_both_regimes(tmp_path: Path, regime: str) -> No
     write_fixtures(make_fixture_config(regime=regime, n_sessions=4), root)
     report = build_from_tree(root)
     assert report.reconcile() == []  # type: ignore[attr-defined]
+
+
+def modeling_frame(n_included: int, regions: list[str]) -> pd.DataFrame:
+    """A minimal QC-annotated frame with the columns the boundary reads."""
+    return pd.DataFrame(
+        {
+            "region": regions[:n_included],
+            "analysis_included": [True] * n_included,
+        }
+    )
+
+
+def modeling_causes(
+    observations: pd.DataFrame,
+    modeled: int,
+    model_fits: pd.DataFrame | None,
+) -> dict[str, int]:
+    """Return the causes reported for the modeling boundary's shortfall."""
+    return _model_exclusion_causes(len(observations) - modeled, observations, model_fits)
+
+
+def test_modeling_loss_separates_scope_from_incomplete_covariates() -> None:
+    """A region never attempted and a row with a null term are different losses.
+
+    Reporting both as ``outside_modeled_region_set`` lets the funnel reconcile
+    on a cause that is false: the first is a scope decision, the second is a
+    data limitation that biases the remaining sample.
+    """
+    observations = modeling_frame(5, ["lh-hippocampus"] * 3 + ["lh-precuneus"] * 2)
+    fits = pd.DataFrame({"region": ["lh-hippocampus"], "n_observations": [1]})
+    causes = modeling_causes(observations, modeled=1, model_fits=fits)
+    assert causes == {
+        "outside_modeled_region_set": 2,
+        "incomplete_model_covariates": 2,
+    }
+
+
+def test_modeling_loss_is_pure_scope_when_covariates_are_complete() -> None:
+    """Every attempted observation fitted means the only loss is scope."""
+    observations = modeling_frame(4, ["lh-hippocampus"] * 2 + ["lh-precuneus"] * 2)
+    fits = pd.DataFrame({"region": ["lh-hippocampus"], "n_observations": [2]})
+    causes = modeling_causes(observations, modeled=2, model_fits=fits)
+    assert causes == {"outside_modeled_region_set": 2}
+
+
+def test_modeling_loss_is_unattributed_without_the_fits() -> None:
+    """Absent the model's inputs, the count is known but no cause is."""
+    observations = modeling_frame(4, ["lh-hippocampus"] * 4)
+    causes = modeling_causes(observations, modeled=1, model_fits=None)
+    assert causes == {"not_modeled_cause_unavailable": 3}
+
+
+def test_modeling_causes_always_sum_to_the_reported_loss() -> None:
+    """Whatever the decomposition, it must close — that is the funnel's rule."""
+    observations = modeling_frame(6, ["lh-hippocampus"] * 6)
+    fits = pd.DataFrame({"region": ["lh-amygdala"], "n_observations": [0]})
+    causes = modeling_causes(observations, modeled=0, model_fits=fits)
+    assert sum(causes.values()) == 6
+
+
+def test_no_modeling_loss_reports_no_causes() -> None:
+    """Nothing lost means nothing to explain."""
+    observations = modeling_frame(2, ["lh-hippocampus"] * 2)
+    fits = pd.DataFrame({"region": ["lh-hippocampus"], "n_observations": [2]})
+    assert modeling_causes(observations, modeled=2, model_fits=fits) == {}

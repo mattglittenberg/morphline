@@ -201,8 +201,10 @@ def account(
 
     qc_obs = read_canonical(qc_observations) if qc_observations else None
     modeled = None
+    fits = None
     if model_results and Path(model_results).is_file():
-        modeled = int(pd.read_parquet(model_results)["n_observations"].sum())
+        fits = pd.read_parquet(model_results)
+        modeled = int(fits["n_observations"].sum())
 
     report = build_accounting(
         observations=obs,
@@ -215,6 +217,7 @@ def account(
         sessions_no_recognised_regions=counters.get("sessions_no_recognised_regions", 0),
         qc_observations=qc_obs,
         modeled_observations=modeled,
+        model_fits=fits,
     )
     run_accounting(report, outdir)
 

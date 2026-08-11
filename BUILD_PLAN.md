@@ -606,7 +606,8 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 **Exit:** QC hits recall ≥ 0.95 and FPR ≤ 0.05 on fixtures; funnel reconciles with zero unexplained loss.
 
 ### Week 4 — Real cross-sectional data + harmonization
-- [ ] ABIDE PCP adapter over per-subject FreeSurfer 5.1 `.stats` (§1.3). First real end-to-end run — **explicitly labelled cross-sectional integration**.
+- [x] ABIDE PCP adapter over per-subject FreeSurfer 5.1 `.stats` (§1.3). **Landed early**, and verified end to end on a 4-subject real sample: 10 files, 0 parse failures, full 28-region set, sites resolved from subject IDs, funnel reconciling, `morphline run` exiting 0. The full-scale run over 1112 subjects is still outstanding — that is what this checkbox originally meant.
+- [ ] First full-scale real run — **explicitly labelled cross-sectional integration**, against the §5.2 criteria.
 - [ ] Expect the parser to break on real files. This is the week that happens. Budget for it. *Two real breaks were already found and fixed ahead of schedule* — see §1.3 and the parser's `_parse_measure` docstring — so treat that budget as still unspent, not as evidence the parser is clean.
 - [ ] Cross-check: morphline's per-subject PCP numbers, aggregated, against the dfsp-spirit FS6 tables. Different FreeSurfer versions, so expect systematic offsets — the check is on rank correlation and site-level structure, not equality.
 - [ ] Reconcile the 9 known-incomplete PCP subjects through the accounting funnel with reason codes (§1.3), not as a silent 1103-vs-1112 discrepancy.

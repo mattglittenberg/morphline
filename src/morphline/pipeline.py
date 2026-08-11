@@ -90,6 +90,7 @@ def run_pipeline(
 
     ingested = run_ingest(adapter, out)
     provenance.freesurfer_versions = ingested.freesurfer_versions
+    provenance.freesurfer_version_declarations = ingested.freesurfer_version_declarations
 
     qc_observations = run_qc(ingested.observations, config.qc, config.analysis, out)
     harmonized = run_harmonize(qc_observations, config.harmonization, out)
@@ -106,6 +107,7 @@ def run_pipeline(
         sessions_no_recognised_regions=ingested.sessions_no_recognised_regions,
         qc_observations=qc_observations,
         modeled_observations=model_results.n_modeled_observations,
+        model_fits=model_results.to_frame(),
     )
     run_accounting(accounting, out)
 

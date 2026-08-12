@@ -8,6 +8,9 @@ If a week slips, cut scope, not the date. Cut order is defined in §7.
 *Revision 4 (2026-08-10) — Track A split across two ABIDE sources after verifying that the FS6 deposit ships only aggregated tables: ABIDE PCP per-subject FreeSurfer 5.1 `.stats` is the parser target, the FS6 tables are a cross-check. §1.3, §4, §5.2 touched. Two parser defects this exposed are fixed in code. Scope and ship date unchanged.*
 
 *Revision 5 (2026-08-11) — three corrections from implementing §2.3 and measuring it. §2.3.2's criterion 1 and its regime B prediction are both restated; the corrections are recorded inline in those subsections rather than changing the surrounding plan. Scope and ship date unchanged.*
+*Revision 6 (2026-08-11) — §4 checkboxes reconciled against the repo for the first time since week 1: weeks 1–3 marked complete, week 4 marked complete except the dfsp-spirit cross-check and the OpenNeuro adapter. §2.3.4 corrected to record the in-repo estimator and its `neuroCombat` cross-check; §3.2, §8 corrected where they repeated the regime B prediction revision 5 restated. Two carried-forward items are named in §4 rather than left implicit. Scope and ship date unchanged.*
+
+**Status at revision 6:** weeks 1–4 complete. Two items carry into week 5 — the **§1.2 OpenNeuro audit**, which gates whether week 5 has a longitudinal real-data target, and the **dfsp-spirit FS6 cross-check**, which is the only outstanding *external* validation of the ingested numbers.
 
 ---
 
@@ -319,8 +322,12 @@ Requirements regardless of policy:
 
 #### 2.3.4 Implementation for v1.0
 
-- `neuroHarmonize` / `neuroCombat`, with biological covariates (`age`, `sex`, `dx_baseline`, `time_from_baseline_years`) preserved in the design matrix so they are not absorbed as batch effects.
-- Harmonization is a **toggleable stage**; the pipeline runs both ways and the report presents both.
+- ~~`neuroHarmonize` / `neuroCombat`~~ **implemented in-repo** (`morphline/combat.py`), with biological covariates (`age_baseline`, `sex`, `dx_baseline`, `time_from_baseline_years`) preserved in the design matrix so they are not absorbed as batch effects.
+
+  > **Revision 6.** `neuroHarmonize` pins `numpy==1.26.4`, which would hold the whole project on numpy 1.x — see Build.md deviation 1. The estimator is therefore written from Johnson et al. (2007) directly, and cross-checked against `neuroCombat` behind an optional extra: adjusted values, γ*, and δ* agree to 1e-6. That cross-check is not ceremony — it found the shrinkage pooling on the wrong axis (across batches within a region, where the paper pools across regions within a batch), a defect that passed all four §2.3.2 criteria because a wrong-axis prior still shrinks and still recovers.
+  >
+  > Covariate preservation turns out to be more load-bearing than this bullet implies: it is what determines whether regime B attenuates (§2.3.2, revision 5).
+- Harmonization is a **toggleable stage**; the pipeline runs both ways and the report presents both. *The toggle and the diagnostics are in place; the two-arm sensitivity run is week-5 work (§4).*
 - Longitudinal ComBat (Beer et al. 2020) is a **v1.1 issue**, not v1.0 work. `longCombat` is R-only, so the options are an R sidecar container or a Python implementation. A Python port is a genuinely valuable open-source contribution and an excellent second act — and it is a week of work by itself.
 
 **If the schedule forces a cut, keep the written analysis in §2.3.1 even if the implementation goes.** The paragraph explaining non-identifiability is worth more to a reviewer than working ComBat code.
@@ -558,6 +565,10 @@ Two configurable regimes, both exercised in CI:
 - **Regime A — site independent of time.** Harmonization should recover batch effects and preserve biology.
 - **Regime B — site confounded with time.** Harmonization should visibly attenuate the longitudinal effect, and the test asserts that it does. Demonstrating the failure mode is the point.
 
+> **Revision 5 correction, restated here because this bullet says it too.** Regime B does not attenuate under the covariate-preserving configuration §2.3.4 mandates — the *unharmonized* estimate is the badly wrong one. See §2.3.2 for the measured numbers and the mechanism. The failure mode is still demonstrated, by a test class that drops `time_from_baseline_years` from the covariate set, which is the configuration that actually produces it.
+
+One gap in this table, found while writing the §2.3.2 suite: `EffectSpec` injects a single global `noise_sd`, so **no site-specific residual scale is ever injected** and ComBat's δ has no truth to recover. Adding `SiteSpec.noise_sd_multiplier` would close it and make δ a genuine recovery target rather than a bounded quantity. Post-ship (§6).
+
 Everything is seeded and the seed is recorded in provenance.
 
 ### 3.3 What this unlocks
@@ -591,47 +602,48 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 ## 4. Week-by-week
 
 ### Week 1 — Access, parser, adapters, fixtures
-- [ ] **Day 1:** §1.2 dataset audit run against candidate OpenNeuro accessions — this is the access task now, and it either resolves in an afternoon or Track B is synthetic-only. Repo initialized, licensed, README skeleton written *aspirationally*.
-- [ ] Canonical schema defined (§1.5). This is the contract; changing it later is expensive.
-- [ ] `FreeSurferStatsParser` — structure only, no dataset knowledge (§1.4).
-- [ ] `DatasetAdapter` interface + synthetic adapter.
-- [ ] Fixture generator: structural realism (§3.1) + injected ground truth (§3.2), both regimes.
-- [ ] pytest + Hypothesis running locally. ruff + pre-commit configured.
+- [ ] **Day 1:** §1.2 dataset audit run against candidate OpenNeuro accessions — this is the access task now, and it either resolves in an afternoon or Track B is synthetic-only. **Still outstanding as of revision 6, and it is now the gate on week 5**: it decides whether the longitudinal model has a real-data target. A null result is the §0.3 outcome, not a failure, but the answer is needed either way.
+- [x] Canonical schema defined (§1.5). This is the contract; changing it later is expensive.
+- [x] `FreeSurferStatsParser` — structure only, no dataset knowledge (§1.4).
+- [x] `DatasetAdapter` interface + synthetic adapter.
+- [x] Fixture generator: structural realism (§3.1) + injected ground truth (§3.2), both regimes.
+- [x] pytest + Hypothesis running locally. ruff + pre-commit configured.
 
-**Exit:** `pytest` green; fixtures → canonical Parquet; parser has zero dataset-specific code.
+**Exit:** `pytest` green; fixtures → canonical Parquet; parser has zero dataset-specific code. **Met** (repo initialized, licensed, README written).
 
 ### Week 2 — Walking skeleton
-- [ ] Stub every remaining stage: accounting counts rows, QC marks everything PASS, harmonize is identity, model fits one region, report is a Jinja2 template with a provenance block and one table.
-- [ ] Data accounting stage scaffolded with the funnel (§1.6) — even trivially, it exists from day 14.
-- [ ] Dockerfile, **amd64** build, pushed to GHCR.
-- [ ] Nextflow DSL2 wiring all stages, paths-not-dataframes in channels (§2.7), `-profile test,docker` runs on fixtures.
-- [ ] GitHub Actions: lint → pytest → container build → **full `nextflow run` on fixtures**.
+- [x] Stub every remaining stage: accounting counts rows, QC marks everything PASS, harmonize is identity, model fits one region, report is a Jinja2 template with a provenance block and one table.
+- [x] Data accounting stage scaffolded with the funnel (§1.6) — built for real rather than stubbed, since §7 never cuts it.
+- [x] Dockerfile, **amd64** build, pushed to GHCR.
+- [x] Nextflow DSL2 wiring all stages, paths-not-dataframes in channels (§2.7), `-profile test,docker` runs on fixtures.
+- [x] GitHub Actions: lint → pytest → container build → **full `nextflow run` on fixtures**.
 
-**Exit:** CI green, badge in README, `nextflow run . -profile test,docker` completes end to end on a clean machine with zero data present. **Shippable.** Tag `v0.1.0`.
+**Exit:** CI green, badge in README, `nextflow run . -profile test,docker` completes end to end on a clean machine with zero data present. **Met — `v0.1.0` tagged.**
 
 ### Week 3 — QC and accounting for real
-- [ ] Surface-hole extraction and Euler derivation, with the three explicit tests (§2.2).
-- [ ] Robust within-site outlier detection; eTIV bounds; asymmetry outliers.
-- [ ] Longitudinal suspicious-change flag with interval and variability handling (§2.4.3).
-- [ ] Three-level `qc_status` / `qc_flags` / `qc_score` / `analysis_included` model (§2.4.1).
-- [ ] Sensitivity **and** specificity validation against planted cases; confusion matrix in report (§2.4.4).
-- [ ] Data accounting funnel populated and reconciling exactly.
+- [x] Surface-hole extraction and Euler derivation, with the three explicit tests (§2.2). *Landed with the parser in week 1.*
+- [x] Robust within-site outlier detection; eTIV bounds; asymmetry outliers.
+- [ ] Longitudinal suspicious-change flag with interval and variability handling (§2.4.3). **Deliberately not implemented.** It needs interval handling, expected biological variability, and population distributions of annualized change to mean anything, and none of those are cheap. The omission is *visible* rather than hidden: `stages/qc.py`'s docstring states it, and the validation suite reports planted extreme changes as a declared known miss rather than quietly counting them clean. §7 item 5 permits this cut.
+- [x] Three-level `qc_status` / `qc_flags` / `qc_score` / `analysis_included` model (§2.4.1).
+- [x] Sensitivity **and** specificity validation against planted cases; confusion matrix in report (§2.4.4).
+- [x] Data accounting funnel populated and reconciling exactly.
 
-**Exit:** QC hits recall ≥ 0.95 and FPR ≤ 0.05 on fixtures; funnel reconciles with zero unexplained loss.
+**Exit:** QC hits recall ≥ 0.95 and FPR ≤ 0.05 on fixtures; funnel reconciles with zero unexplained loss. **Met** — thresholds are asserted against `QCConfig` fields, not literals.
 
 ### Week 4 — Real cross-sectional data + harmonization
-- [x] ABIDE PCP adapter over per-subject FreeSurfer 5.1 `.stats` (§1.3). **Landed early**, and verified end to end on a 4-subject real sample: 10 files, 0 parse failures, full 28-region set, sites resolved from subject IDs, funnel reconciling, `morphline run` exiting 0. The full-scale run over 1112 subjects is still outstanding — that is what this checkbox originally meant.
-- [ ] First full-scale real run — **explicitly labelled cross-sectional integration**, against the §5.2 criteria.
-- [ ] Expect the parser to break on real files. This is the week that happens. Budget for it. *Two real breaks were already found and fixed ahead of schedule* — see §1.3 and the parser's `_parse_measure` docstring — so treat that budget as still unspent, not as evidence the parser is clean.
-- [ ] Cross-check: morphline's per-subject PCP numbers, aggregated, against the dfsp-spirit FS6 tables. Different FreeSurfer versions, so expect systematic offsets — the check is on rank correlation and site-level structure, not equality.
-- [ ] Reconcile the 9 known-incomplete PCP subjects through the accounting funnel with reason codes (§1.3), not as a silent 1103-vs-1112 discrepancy.
-- [ ] ComBat with covariate preservation; configurable `min_batch_size` and small-batch policy (§2.3.3).
-- [ ] Batch-effect recovery, biological preservation, and non-attenuation tests on fixtures (§2.3.2).
-- [ ] Regime B (confounded) test asserting the expected attenuation.
-- [ ] Real-data sanity checks per §5.2.
-- [ ] If the §1.2 audit found a qualifying OpenNeuro accession: OpenNeuro adapter. If not: proceed, and note it.
+- [x] ABIDE PCP adapter over per-subject FreeSurfer 5.1 `.stats` (§1.3).
+- [x] First full-scale real run — **explicitly labelled cross-sectional integration**, against the §5.2 criteria. 1112 sessions discovered, 3314 files parsed with zero failures, 30,910 canonical observations, funnel reconciling with zero unexplained loss.
+- [x] Expect the parser to break on real files. **It did — four further defects, on top of the two found ahead of schedule.** That budget is now spent rather than unspent.
+- [ ] Cross-check: morphline's per-subject PCP numbers, aggregated, against the dfsp-spirit FS6 tables. Different FreeSurfer versions, so expect systematic offsets — the check is on rank correlation and site-level structure, not equality. **Outstanding.** This is the only *external* validation of the numbers themselves; everything else compares morphline against morphline or against truth morphline generated. §7 item 3 permits cutting it, and the neuroCombat cross-check (below) now supplies external validation of the estimator, but not of the ingested values.
+- [x] Reconcile the 9 known-incomplete PCP subjects through the accounting funnel with reason codes (§1.3). Attributed as `missing_derivative=4`, `absent_from_source=9`, `source_unavailable=105` — not a silent 1103-vs-1112 discrepancy.
+- [x] ComBat with covariate preservation; configurable `min_batch_size` and small-batch policy (§2.3.3). All three policies are behaviourally distinct and separately tested; small-batch covariate composition is reported alongside sizes.
+- [x] Batch-effect recovery, biological preservation, and non-attenuation tests on fixtures (§2.3.2). On `recovery.yaml`: γ recovery *r* = 0.998 with worst-case error 7.6% of the true effect spread, site R² 0.62 → 0.0001, slopes unchanged to within 1%.
+- [x] Regime B (confounded) test — **asserting the measured behavior, which is not the predicted attenuation.** See the revision 5 correction in §2.3.2.
+- [x] Real-data sanity checks per §5.2.
+- [ ] If the §1.2 audit found a qualifying OpenNeuro accession: OpenNeuro adapter. **Blocked on the audit, which has not been run.**
+- [x] *Added in revision 6, not in the original plan:* cross-check the in-repo ComBat against `neuroCombat` behind an optional extra (Build.md deviation 1's promise). It matches to 1e-6 on adjusted values, γ*, and δ* — and it found a real defect in the estimator's shrinkage axis that no internal test could have caught.
 
-**Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks.
+**Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks. **Met.** Two items carry forward: the dfsp-spirit cross-check and the OpenNeuro audit.
 
 ### Week 5 — Longitudinal model
 - [ ] MixedLM per §2.5.1, on the 10–20 region default set.
@@ -727,9 +739,10 @@ Note that region coverage is no longer a cut item — 10–20 regions is the v1 
 | No OpenNeuro accession clears the §1.2 audit | Not on critical path (§0.3); synthetic validates the longitudinal path; ABIDE covers real-data integration. Timebox the search to 4 hours and accept the synthetic-only outcome |
 | Chosen OpenNeuro accession is single-site or small | Expected, not a surprise (§1.3). It validates the longitudinal path but not the scanner/time confound; report which one and never imply both |
 | IXI derivatives never materialize | IXI is a stretch by construction; ABIDE is Track A regardless. Never let ~600 × `recon-all` onto the 6-week path |
-| Real stats files break the parser | Week 4 buffer; property-based tests; version-tolerant parsing from day 1; reason-coded parse failures |
+| Real stats files break the parser | Week 4 buffer; property-based tests; version-tolerant parsing from day 1; reason-coded parse failures. **Realized: six defects total, all fixed. The buffer was needed** |
 | Scanner/time confound is total in real data | Report it as a finding; label affected estimates as sensitivity analysis, not inference (§2.3.1) |
-| Harmonization eats the longitudinal signal | Regime B fixture test asserts and demonstrates this failure mode explicitly |
+| Harmonization eats the longitudinal signal | Demonstrated by a fixture test that drops the time covariate — which is the configuration that causes it. Preserving the covariate (§2.3.4) prevents it, so the real risk is a *misconfigured* covariate set, not the regime (§2.3.2, revision 5) |
+| An in-repo estimator silently diverges from the method it cites | The `neuroCombat` cross-check, run in CI behind an optional extra. It has already caught one such divergence; internal recovery tests did not |
 | QC over-flags | Specificity and precision are acceptance criteria, not afterthoughts (§2.4.4) |
 | MixedLM non-convergence | Focused region set reduces exposure; per-region status reported; fall back to random-intercept-only |
 | arm64 build resists | amd64 is the deliverable; arm64 is timeboxed and droppable (§2.6) |

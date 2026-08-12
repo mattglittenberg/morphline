@@ -25,13 +25,17 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy --strict src/
 uv run pytest -v
 uv run pytest tests/test_accounting.py::test_name          # single test
-uv run pytest -m "not slow"                                # skip statistical recovery tests
+uv run pytest -m "not slow"                                # what CI's `test` job runs
+uv run pytest -m slow                                      # what CI's `recovery` job runs
+uv run --extra combat-xcheck pytest -m optional            # the neuroCombat cross-check
 nextflow run . -profile test,docker --outdir results/      # CI-only in practice; see below
 ```
 
-Three run configs, all exercised: `config/test.yaml` (tiny, CI), `config/recovery.yaml` (larger, statistical recovery), `config/confounded.yaml` (regime B, site confounded with time). No external data is ever required — the pipeline generates its own fixtures.
+Four run configs, all exercised: `config/test.yaml` (tiny, CI), `config/recovery.yaml` (regime A, §2.3.2 recovery suite), `config/confounded.yaml` (regime B, site confounded with time), `config/abide.yaml` (real data, needs `data/abide_pcp`). Only the last needs external data; the rest generate their own fixtures.
 
-Markers declared in `pyproject.toml`: `slow` (statistical recovery over larger fixtures), `optional` (cross-checks needing optional deps). Coverage is printed but not gated — there is deliberately no `--cov-fail-under`.
+Markers declared in `pyproject.toml`: `slow` (statistical recovery over larger fixtures — the model slope suite and the four §2.3.2 harmonization criteria), `optional` (cross-checks needing optional deps — currently `neuroCombat`, which is a `[project.optional-dependencies]` extra deliberately kept out of the dev group so it cannot enter the default resolution). Coverage is printed but not gated — there is deliberately no `--cov-fail-under`; note it now comes from two jobs, so a badge will need `coverage combine`.
+
+CI jobs: `lint`, `types`, `test` (`-m "not slow"`), `recovery` (`-m slow`), `xcheck` (`-m optional`, with the extra), `e2e`, `nf`, `publish`. **ruff is pinned exactly** in both `pyproject.toml` and `.pre-commit-config.yaml`, and the two must stay in lockstep — when they drifted, pre-commit and CI formatted the same file differently and CI failed on a commit that had not touched it.
 
 ## Architecture
 
@@ -93,7 +97,9 @@ The **modeling boundary** is decomposed, not labelled. `ModelExclusion` separate
 - **γ is identified only up to a size-weighted centering.** The batch terms satisfy `Σ_b (n_b/n)·γ_b = 0`, not `mean(γ) = 0`. With equal batch sizes the two coincide and the distinction is invisible; with unequal ones they diverge badly. Truth quantities must be centered the same way before comparison.
 - **`report_and_exclude` excludes from harmonization, never from the dataset.** Dropping rows at the harmonization boundary would resurface at the modeling boundary under a cause that is false. Harmonization is not a funnel boundary and must not become one.
 - **28 tests, not 14 regions.** Hemispheres are independent tests and count in the multiplicity family. Regions and tests are reported separately.
-- **Regime B failing loudly is the correct result** — demonstrating the failure mode is the artifact.
+- **Regime B does not attenuate, and that is the measured result.** BUILD_PLAN §2.3.2 predicted harmonization would visibly flatten the longitudinal effect under a scanner/time confound. It does the opposite: *unharmonized*, the `time` coefficient comes out sign-flipped (+58 against an injected −20), because the scanner step reads as biology; harmonization recovers it to −19.7. The cause is a tension with §2.3.4, which requires `time_from_baseline_years` be preserved in the design matrix — and a preserved covariate is exactly the one the batch term cannot absorb. Drop it and the predicted attenuation appears immediately (−7.5), which is what `TestCovariatePreservationIsWhatSavesRegimeB` demonstrates. The failure mode is real but belongs to the *configuration*, not the regime. Recorded as BUILD_PLAN revision 5; do not "fix" the tests back toward the original prediction.
+- **Regime B's estimates stay non-interpretable regardless.** Recovery there is knowable only because the truth was injected; from the data alone a scanner step and a biological change of the same size are the same observation. `interpretable: false` must not soften because a number lands close.
+- **The `time:dx_baseline` interaction is robust to the scanner/time confound** in a way the `time` main effect is not — a scanner change shifts both diagnosis groups alike and largely cancels. Independent support for §2.5.3 making the interaction the primary hypothesis.
 
 ## Docs and placeholders
 

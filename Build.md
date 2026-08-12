@@ -156,14 +156,14 @@ Region set is the §2.5.2 AD/aging default: 7 subcortical + 7 cortical, bilatera
 
 Every stage exists from day 14. Each reads canonical Parquet, writes canonical Parquet, emits `versions.yml`.
 
-| Stage | Week 2 behaviour | Deepened in |
-|---|---|---|
-| `ingest.py` | Real — adapter + parser → canonical Parquet | done |
-| `accounting.py` | **Real, not a stub** — full §1.6 funnel with reason codes | week 3 |
-| `qc.py` | Marks everything `PASS`, emits the real field structure | week 3 |
-| `harmonize.py` | Identity passthrough, toggleable | week 4 |
-| `model.py` | MixedLM on one region | week 5 |
-| `report.py` | Jinja2 + Plotly; provenance block, funnel, one table | week 6 |
+| Stage | Week 2 behaviour | Deepened in | Status |
+|---|---|---|---|
+| `ingest.py` | Real — adapter + parser → canonical Parquet | done | **done** |
+| `accounting.py` | **Real, not a stub** — full §1.6 funnel with reason codes | week 3 | **done** |
+| `qc.py` | Marks everything `PASS`, emits the real field structure | week 3 | **done** — four checks; longitudinal change flag declared as a known miss |
+| `harmonize.py` | Identity passthrough, toggleable | week 4 | **done** — in-repo ComBat, three small-batch policies, cross-checked against `neuroCombat` |
+| `model.py` | MixedLM on one region | week 5 | **still one region** — `fit_model`'s `[:1]` truncation |
+| `report.py` | Jinja2 + Plotly; provenance block, funnel, one table | week 6 | funnel, QC, harmonization, and batch parameters render; polish outstanding |
 
 Accounting is built for real immediately: it is the cheapest defence against silent data loss and §7 lists it as never-cut. The funnel — `raw files → parsed files → canonical observations → QC-passing observations → modeled observations` — must reconcile exactly with every drop attributed. `test_accounting_funnel_reconciles_exactly` is a week-2 test.
 
@@ -238,10 +238,14 @@ Verifiable only in CI: amd64 image build, GHCR push, `nextflow run . -profile te
 
 ## Deferred — weeks 3–6
 
-Carried forward from BUILD_PLAN §4. Not part of this build.
+Carried forward from BUILD_PLAN §4. Not part of the weeks 1–2 build this document plans.
 
-- **Week 3 — QC for real.** Within-site robust outliers (median/MAD), eTIV bounds, asymmetry outliers, longitudinal suspicious-change flag with interval and variability handling (§2.4.3). Three-level status model. Sensitivity **and** specificity against planted cases; confusion matrix in the report (§2.4.4). Targets: recall ≥ 0.95, FPR ≤ 0.05, precision ≥ 0.80.
-- **Week 4 — Real cross-sectional data + harmonization.** ABIDE adapter, **explicitly labelled cross-sectional integration** (§1.3). Expect the parser to break on real files; that is what the week is for. In-repo ComBat with covariate preservation, configurable `min_batch_size` (default 20) and small-batch policy. All four §2.3.2 criteria, plus the Regime B test asserting the expected attenuation.
+- **Week 3 — QC for real. ✅ Done.** Within-site robust outliers (median/MAD), eTIV bounds, asymmetry outliers, three-level status model, sensitivity **and** specificity against planted cases with the confusion matrix in the report. Targets met and asserted against `QCConfig` fields rather than literals. The **longitudinal suspicious-change flag (§2.4.3) was deliberately not implemented** — it needs interval handling and population change distributions to mean anything — and the omission is declared: `stages/qc.py` says so and the validation suite reports planted extreme changes as a known miss rather than counting them clean.
+- **Week 4 — Real cross-sectional data + harmonization. ✅ Done, two items carried.** ABIDE PCP at full scale (1112 sessions, 3314 files, zero parse failures, funnel reconciling), labelled cross-sectional integration. The parser did break on real files — six defects total, all fixed. In-repo ComBat with covariate preservation, three behaviourally distinct small-batch policies, and all four §2.3.2 criteria passing on `recovery.yaml`.
+
+  Two corrections the week produced, both recorded in BUILD_PLAN revisions 5–6: **Regime B does not attenuate** under the covariate-preserving configuration §2.3.4 mandates (the *unharmonized* estimate is the wrong one), and the `neuroCombat` cross-check promised by deviation 1 **found a real defect** — shrinkage pooling across batches within a region where Johnson et al. pool across regions within a batch. No internal recovery test could have caught it.
+
+  **Carried into week 5:** the dfsp-spirit FS6 aggregate cross-check (the only outstanding *external* validation of the ingested numbers) and the §1.2 OpenNeuro audit (which gates whether week 5 has a longitudinal real-data target).
 - **Week 5 — Longitudinal model.** MixedLM per §2.5.1 on the 28-test region set; `age_baseline`/`time` split, baseline eTIV, baseline dx, per-region convergence reporting. BH-FDR within the declared primary family only; secondary families separate (§2.5.3). Missing-data accounting by cause + completer/non-completer comparison. Harmonized vs unharmonized run **labelled as sensitivity analysis**.
 - **Week 6 — Ship.** README with architecture diagram, Nextflow DAG, cold-clone quickstart, and an honest limitations section covering §2.1 (pybids is not a derivatives parser), §2.3.1 (non-identifiability of scanner vs time), §2.5.4 (MAR assumption), and the real-data scope actually achieved. Full provenance block. **Synthetic** example report on GitHub Pages (§5.3). Coverage badge, CITATION.cff. Tag `v1.0.0`. Open 5–8 roadmap issues.
 

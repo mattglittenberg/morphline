@@ -391,9 +391,7 @@ def build_accounting(
 
     report.missingness = planned_missing
     report.missingness_by_site = _missingness_by(expected_sessions, observations, "site")
-    report.missingness_by_timepoint = _missingness_by(
-        expected_sessions, observations, "session_id"
-    )
+    report.missingness_by_timepoint = _missingness_by(expected_sessions, observations, "session_id")
     return report
 
 

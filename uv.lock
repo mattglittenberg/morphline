@@ -304,7 +304,7 @@ dev = [
     { name = "pre-commit", specifier = ">=3.8" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.6" },
+    { name = "ruff", specifier = "==0.16.2" },
     { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 

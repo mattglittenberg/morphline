@@ -56,7 +56,10 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       # Coverage is measured and printed but not gated: no --cov-fail-under.
-      - run: uv run pytest -v -m "not slow" --cov=src/morphline --cov-report=term-missing
+      # `optional` is deselected explicitly rather than left to skip on its own
+      # conditions: those tests need either an extra or an external dataset, and
+      # a job that passes only because everything skipped is not a signal.
+      - run: uv run pytest -v -m "not slow and not optional" --cov=src/morphline --cov-report=term-missing
 
   # The statistical recovery suites: model slope recovery and the four §2.3.2
   # harmonization criteria over larger fixture trees. These are the tests that

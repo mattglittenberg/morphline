@@ -270,6 +270,11 @@ dependencies = [
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+combat-xcheck = [
+    { name = "neurocombat" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
@@ -285,6 +290,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "neurocombat", marker = "extra == 'combat-xcheck'", specifier = ">=0.2.12" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "plotly", specifier = ">=5.24" },
@@ -295,6 +301,7 @@ requires-dist = [
     { name = "statsmodels", specifier = ">=0.14" },
     { name = "typer", specifier = ">=0.12" },
 ]
+provides-extras = ["combat-xcheck"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -348,6 +355,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/2b/1d/58946e5aab18393e7
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/85/a5bfaebfd305ac18b57b0854d74e37e586809061a91fda62f0bd50c8518e/narwhals-2.24.0-py3-none-any.whl", hash = "sha256:42fdedf44e5b2ca7505630d45b4ac3058f38d8485cba9fe1652ca23152df7489", size = 461030, upload-time = "2026-07-13T10:49:17.571Z" },
 ]
+
+[[package]]
+name = "neurocombat"
+version = "0.2.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/e4/ca7af7aaf09b34702ef1f2a5e6afd5105b89c01a09f323ac60af429ef8b4/neuroCombat-0.2.12.tar.gz", hash = "sha256:dfba419ec1a251f4142a3705a1567e5a3b9589dc39ca93a57669cda09c954caa", size = 6191, upload-time = "2021-05-18T16:25:17.511Z" }
 
 [[package]]
 name = "nodeenv"

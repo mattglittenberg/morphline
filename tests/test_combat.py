@@ -372,56 +372,122 @@ class TestEstimationMask:
         assert params.n_per_batch == {"site-a": 70, "site-b": 100}
 
 
+PROBE = ("region-00", "volume")
+
+
+def _multi_region_frame(
+    *,
+    shifts: dict[str, float],
+    tiny: dict[str, float] | None = None,
+    n_per_batch: int = 120,
+    n_tiny: int = 3,
+    n_regions: int = 10,
+    seed: int = 11,
+) -> pd.DataFrame:
+    """Build several regions sharing a batch structure.
+
+    Shrinkage pools across regions within a batch, so a prior only exists once
+    a batch appears in more than one region. Every test that exercises the
+    empirical-Bayes step therefore needs a multi-region frame; a single region
+    is the degenerate case where there is nothing to borrow from.
+
+    Args:
+        shifts: Additive offset per batch, applied in every region.
+        tiny: An additional small batch, if one is wanted.
+        n_per_batch: Observations per ordinary batch per region.
+        n_tiny: Observations for the small batch per region.
+        n_regions: How many regions to emit.
+        seed: RNG seed; each region draws from a different stream so the
+            per-region variances differ and the prior is non-degenerate.
+
+    Returns:
+        A canonical-shaped frame spanning ``n_regions`` regions.
+    """
+    parts: list[pd.DataFrame] = []
+    for index in range(n_regions):
+        region = f"region-{index:02d}"
+        parts.append(
+            _frame(shifts=shifts, n_per_batch=n_per_batch, region=region, seed=seed + 2 * index)
+        )
+        if tiny:
+            parts.append(
+                _frame(shifts=tiny, n_per_batch=n_tiny, region=region, seed=seed + 2 * index + 1)
+            )
+    return pd.concat(parts, ignore_index=True)
+
+
 class TestShrinkage:
-    """Empirical Bayes is what makes a small batch survivable."""
+    """Empirical Bayes is what makes a small batch survivable.
+
+    The prior for a batch is estimated across the regions that batch appears
+    in, so these all use multi-region frames. That is the pooling direction
+    Johnson et al. specify, and it is why a one-region frame gets no shrinkage
+    at all.
+    """
 
     def test_small_batch_is_pulled_toward_the_prior(self) -> None:
-        frame = pd.concat(
-            [
-                _frame(shifts={"site-a": -100.0, "site-b": 100.0}, n_per_batch=200, seed=5),
-                _frame(shifts={"site-tiny": 900.0}, n_per_batch=3, seed=6),
-            ],
-            ignore_index=True,
+        frame = _multi_region_frame(
+            shifts={"site-a": -100.0, "site-b": 100.0}, tiny={"site-tiny": 900.0}
         )
 
-        shrunk = run_combat(frame).fit.parameters[("lh-hippocampus", "volume")]
-        raw = run_combat(frame, empirical_bayes=False).fit.parameters[("lh-hippocampus", "volume")]
+        shrunk = run_combat(frame).fit.parameters[PROBE]
+        raw = run_combat(frame, empirical_bayes=False).fit.parameters[PROBE]
 
         assert abs(shrunk.native_gamma()["site-tiny"]) < abs(raw.native_gamma()["site-tiny"])
         assert shrunk.shrinkage_applied
         assert not raw.shrinkage_applied
 
     def test_large_batches_are_barely_moved(self) -> None:
-        frame = pd.concat(
-            [
-                _frame(shifts={"site-a": -100.0, "site-b": 100.0}, n_per_batch=200, seed=5),
-                _frame(shifts={"site-tiny": 900.0}, n_per_batch=3, seed=6),
-            ],
-            ignore_index=True,
+        frame = _multi_region_frame(
+            shifts={"site-a": -100.0, "site-b": 100.0}, tiny={"site-tiny": 900.0}
         )
 
-        shrunk = run_combat(frame).fit.parameters[("lh-hippocampus", "volume")]
-        raw = run_combat(frame, empirical_bayes=False).fit.parameters[("lh-hippocampus", "volume")]
+        shrunk = run_combat(frame).fit.parameters[PROBE]
+        raw = run_combat(frame, empirical_bayes=False).fit.parameters[PROBE]
 
         for batch in ("site-a", "site-b"):
             moved = abs(shrunk.native_gamma()[batch] - raw.native_gamma()[batch])
             assert moved < 15.0
 
-    def test_convergence_is_reported(self) -> None:
+    def test_a_single_region_gets_no_shrinkage(self) -> None:
+        """One value has no variance, so there is no prior to shrink toward."""
         frame = _frame(shifts={"site-a": -120.0, "site-b": 120.0})
         params = run_combat(frame).fit.parameters[("lh-hippocampus", "volume")]
+
+        assert not params.shrinkage_applied
+        assert params.n_iterations == 0
+
+    def test_convergence_is_reported(self) -> None:
+        frame = _multi_region_frame(shifts={"site-a": -120.0, "site-b": 120.0})
+        params = run_combat(frame).fit.parameters[PROBE]
 
         assert params.converged
         assert params.n_iterations >= 1
 
     def test_iteration_cap_reports_non_convergence_rather_than_hanging(self) -> None:
-        frame = _frame(shifts={"site-a": -120.0, "site-b": 120.0})
-        params = run_combat(frame, max_iterations=1, tolerance=1e-12).fit.parameters[
-            ("lh-hippocampus", "volume")
-        ]
+        frame = _multi_region_frame(shifts={"site-a": -120.0, "site-b": 120.0})
+        params = run_combat(frame, max_iterations=1, tolerance=1e-12).fit.parameters[PROBE]
 
         assert not params.converged
         assert params.n_iterations == 1
+
+    def test_prior_pools_across_regions_not_across_batches(self) -> None:
+        """The axis the implementation used to have backwards.
+
+        Adding regions must change a batch's shrunk estimate, because they are
+        what the prior is estimated from. If the prior were formed across
+        batches within a region instead, the estimate would be identical no
+        matter how many regions were present.
+        """
+        shifts = {"site-a": -100.0, "site-b": 100.0}
+        tiny = {"site-tiny": 900.0}
+
+        few = run_combat(_multi_region_frame(shifts=shifts, tiny=tiny, n_regions=2))
+        many = run_combat(_multi_region_frame(shifts=shifts, tiny=tiny, n_regions=12))
+
+        assert few.fit.parameters[PROBE].gamma_star["site-tiny"] != pytest.approx(
+            many.fit.parameters[PROBE].gamma_star["site-tiny"], rel=1e-6
+        )
 
 
 class TestPerRegionEstimation:

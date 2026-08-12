@@ -22,6 +22,12 @@ dependencies = [
 [project.scripts]
 morphline = "morphline.cli:app"
 
+# Not in the dev group, so `uv sync` does not install it and the cross-check
+# skips by default. neuroCombat declares no dependencies at all, so unlike
+# neuroHarmonize it cannot drag numpy back to 1.x — verified against numpy 2.5.
+[project.optional-dependencies]
+combat-xcheck = ["neuroCombat>=0.2.12"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
@@ -63,6 +69,8 @@ ignore = [
 allowed-confusables = ["×", "→", "≥", "≤", "−", "–"]
 
 [tool.ruff.lint.per-file-ignores]
+# neuroCombat is the package's own spelling; N816 would have us rename it.
+"tests/test_combat_crosscheck.py" = ["N816"]
 "tests/*" = ["D", "ANN"]
 
 [tool.ruff.lint.pydocstyle]

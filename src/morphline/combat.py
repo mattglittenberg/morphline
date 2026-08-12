@@ -8,16 +8,30 @@ from "does the library run" into "does *our* estimator recover the injected
 batch parameter" — which is the stronger claim.
 
 The method is the parametric empirical Bayes of Johnson, Li & Rabinovic (2007).
-For batch *i* and observation *j* within one region::
+For batch *i*, region *r*, and observation *j*::
 
-    y_ij = alpha + X_ij B + gamma_i + delta_i * eps_ij
+    y_irj = alpha_r + X_irj B_r + gamma_ir + delta_ir * eps_irj
 
-``alpha`` is the grand mean, ``X B`` the preserved biological covariate block,
-``gamma_i`` the batch's additive shift, and ``delta_i`` its residual scale. The
-estimator standardizes, pools the per-batch moments toward a normal prior on
-``gamma`` and an inverse-gamma prior on ``delta**2``, then back-transforms.
-Shrinkage is what lets a small batch borrow strength from the others instead of
-chasing its own noise.
+``alpha_r`` is the region's grand mean, ``X B_r`` the preserved biological
+covariate block, ``gamma_ir`` the batch's additive shift, and ``delta_ir`` its
+residual scale. The estimator standardizes each region, shrinks the per-batch
+moments toward a normal prior on ``gamma`` and an inverse-gamma prior on
+``delta**2``, then back-transforms.
+
+**Shrinkage pools across regions within a batch, not across batches within a
+region.** This is the direction Johnson et al. specify and it is easy to get
+backwards: the prior for site *i* is estimated from the distribution of that
+site's effect across all 28 regions, so a batch with few subjects borrows
+strength from the regions it also appears in. Pooling the other way would form
+a prior from as many values as there are sites — three, on the fixture configs —
+which is not a distribution. The pooling is legitimate precisely *because* the
+standardization step already divided each region by its own residual SD, so
+``gamma`` and ``delta`` are dimensionless and comparable across regions that
+differ by three orders of magnitude.
+
+One consequence worth knowing: a region's adjusted values depend on the other
+regions in the frame. Harmonizing one region alone is well defined but gets no
+shrinkage, because a single value has no variance to form a prior from.
 
 **Covariate preservation is the whole point** (§2.3.4). Biological covariates
 enter the design matrix, so their variation is accounted for before the batch
@@ -333,15 +347,19 @@ def _encode_covariates(
 
 
 def _moment_priors(delta2_hat: npt.NDArray[np.float64]) -> tuple[float, float] | None:
-    """Match an inverse-gamma prior to the per-batch variance estimates.
+    """Match an inverse-gamma prior to one batch's variance estimates.
+
+    The estimates are that batch's residual variance in each region it appears
+    in, so the prior describes how much a site's variance inflation varies
+    across the brain.
 
     Args:
-        delta2_hat: Per-batch residual variance estimates.
+        delta2_hat: The batch's residual variance per region.
 
     Returns:
         The ``(shape, scale)`` hyperparameters, or ``None`` when the moments are
-        degenerate — a single batch, or identical variances across batches,
-        leaves the prior undefined and shrinkage has nothing to pull toward.
+        degenerate — one region, or identical variances everywhere, leaves the
+        prior undefined and shrinkage has nothing to pull toward.
     """
     if delta2_hat.size < 2:
         return None
@@ -356,206 +374,62 @@ def _moment_priors(delta2_hat: npt.NDArray[np.float64]) -> tuple[float, float] |
     return shape, scale
 
 
-def _solve_empirical_bayes(
-    z: npt.NDArray[np.float64],
-    codes: npt.NDArray[np.intp],
-    gamma_hat: npt.NDArray[np.float64],
-    delta2_hat: npt.NDArray[np.float64],
-    counts: npt.NDArray[np.float64],
-    max_iterations: int,
-    tolerance: float,
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], bool, int, bool]:
-    """Iterate the conditional posterior means for gamma and delta squared.
+@dataclass(slots=True)
+class _RegionState:
+    """What the standardization pass produces for one region.
 
-    Args:
-        z: Standardized values for the region.
-        codes: Batch index per observation.
-        gamma_hat: Per-batch means of ``z``.
-        delta2_hat: Per-batch variances of ``z``.
-        counts: Observations per batch.
-        max_iterations: Iteration cap.
-        tolerance: Maximum relative change accepted as converged.
-
-    Returns:
-        ``(gamma_star, delta2_star, converged, n_iterations, shrinkage_applied)``.
+    Attributes:
+        key: ``(region, measure_type)``.
+        values: Original values for every row in the region.
+        batches: Batch label per row.
+        estimable: Batches with enough observations to estimate, ordered.
+        adjust_rows: Rows eligible to be transformed.
+        design: Encoded covariate block over every row in the region.
+        terms: Retained covariate design column names.
+        cov_coefficients: Fitted covariate coefficients.
+        grand_mean: The region's grand mean.
+        pooled_sd: The region's pooled residual standard deviation.
+        codes_fit: Batch position per estimation row.
+        z_fit: Standardized estimation values.
+        counts: Estimation observations per batch.
+        gamma_hat: Unshrunk additive batch term per batch.
+        delta2_hat: Unshrunk residual variance per batch.
     """
-    priors = _moment_priors(delta2_hat)
-    if priors is None:
-        return gamma_hat, delta2_hat, True, 0, False
 
-    shape, scale = priors
-    gamma_bar = float(gamma_hat.mean())
-    tau2 = float(gamma_hat.var(ddof=1))
-
-    gamma_star = gamma_hat.copy()
-    delta2_star = delta2_hat.copy()
-
-    for iteration in range(1, max_iterations + 1):
-        numerator = counts * tau2 * gamma_hat + delta2_star * gamma_bar
-        denominator = counts * tau2 + delta2_star
-        gamma_next = np.where(denominator > 0.0, numerator / denominator, gamma_hat)
-
-        residuals = z - gamma_next[codes]
-        sum_squares = np.bincount(codes, weights=residuals**2, minlength=gamma_hat.size)
-        delta2_next = (scale + 0.5 * sum_squares) / (counts / 2.0 + shape - 1.0)
-        delta2_next = np.where(delta2_next > 0.0, delta2_next, delta2_star)
-
-        change = max(
-            float(np.max(np.abs(gamma_next - gamma_star) / (np.abs(gamma_star) + 1e-12))),
-            float(np.max(np.abs(delta2_next - delta2_star) / (np.abs(delta2_star) + 1e-12))),
-        )
-        gamma_star, delta2_star = gamma_next, delta2_next
-        if change < tolerance:
-            return gamma_star, delta2_star, True, iteration, True
-
-    return gamma_star, delta2_star, False, max_iterations, True
+    key: tuple[str, str]
+    values: pd.Series
+    batches: pd.Series
+    estimable: list[str]
+    adjust_rows: pd.Series
+    design: pd.DataFrame
+    terms: tuple[str, ...]
+    cov_coefficients: npt.NDArray[np.float64]
+    grand_mean: float
+    pooled_sd: float
+    codes_fit: npt.NDArray[np.intp]
+    z_fit: npt.NDArray[np.float64]
+    counts: npt.NDArray[np.float64]
+    gamma_hat: npt.NDArray[np.float64]
+    delta2_hat: npt.NDArray[np.float64]
 
 
-def _fit_region(
-    frame: pd.DataFrame,
-    *,
-    region: str,
-    measure_type: str,
-    batch_column: str,
-    covariates: Sequence[str],
-    estimation_mask: pd.Series,
-    empirical_bayes: bool,
-    max_iterations: int,
-    tolerance: float,
-) -> tuple[pd.Series, BatchParameters | None, str | None, dict[str, str]]:
-    """Estimate and apply ComBat within one region.
+@dataclass(frozen=True, slots=True)
+class _BatchPrior:
+    """Hyperparameters for one batch, pooled across the regions it appears in.
 
-    Args:
-        frame: Every row for this region, adjusted or not.
-        region: Canonical region name.
-        measure_type: The measure being harmonized.
-        batch_column: Column holding the batch label.
-        covariates: Biological covariates to preserve.
-        estimation_mask: Which rows may contribute to estimation.
-        empirical_bayes: Whether to shrink the per-batch moments.
-        max_iterations: Iteration cap for the shrinkage solve.
-        tolerance: Convergence tolerance for the shrinkage solve.
-
-    Returns:
-        ``(adjusted_values, parameters, skip_reason, covariates_dropped)``. On a
-        skip the values are returned unchanged and ``parameters`` is ``None``.
+    Attributes:
+        gamma_bar: Prior mean of the additive term.
+        tau2: Prior variance of the additive term.
+        shape: Inverse-gamma shape for the residual variance.
+        scale: Inverse-gamma scale for the residual variance.
+        n_regions: Regions the hyperparameters were estimated from.
     """
-    values = frame[_VALUE].astype("float64")
-    design, dropped = _encode_covariates(frame, covariates)
 
-    complete = values.notna()
-    if not design.empty:
-        complete &= design.notna().all(axis=1)
-    batches = frame[batch_column].astype("string")
-    complete &= batches.notna()
-
-    usable = complete & np.isfinite(values.fillna(np.nan).to_numpy())
-    eligible = usable & estimation_mask.reindex(frame.index, fill_value=False).fillna(False)
-
-    if not bool(eligible.any()):
-        return values, None, str(ComBatSkipCode.INSUFFICIENT_ROWS), dropped
-
-    sizes = batches[eligible].value_counts()
-    estimable = sorted(str(b) for b, n in sizes.items() if int(n) >= MIN_ROWS_PER_BATCH)
-    if len(estimable) < MIN_BATCHES:
-        return values, None, str(ComBatSkipCode.SINGLE_BATCH), dropped
-
-    in_batch = batches.isin(estimable)
-    fit_rows = eligible & in_batch
-    if int(fit_rows.sum()) <= len(estimable) + design.shape[1]:
-        return values, None, str(ComBatSkipCode.INSUFFICIENT_ROWS), dropped
-
-    index = {name: position for position, name in enumerate(estimable)}
-    codes_fit = np.asarray([index[str(b)] for b in batches[fit_rows]], dtype=np.intp)
-    y_fit = values[fit_rows].to_numpy(dtype=np.float64)
-    counts = np.bincount(codes_fit, minlength=len(estimable)).astype(np.float64)
-
-    onehot = np.zeros((y_fit.size, len(estimable)), dtype=np.float64)
-    onehot[np.arange(y_fit.size), codes_fit] = 1.0
-
-    terms = tuple(str(c) for c in design.columns)
-    cov_fit = (
-        design.loc[fit_rows].to_numpy(dtype=np.float64)
-        if terms
-        else np.zeros((y_fit.size, 0), dtype=np.float64)
-    )
-    cov_fit, terms = _drop_collinear(onehot, cov_fit, terms, dropped)
-
-    x_fit = np.hstack([onehot, cov_fit])
-    if np.linalg.matrix_rank(x_fit) < x_fit.shape[1]:
-        return values, None, str(ComBatSkipCode.SINGULAR_DESIGN), dropped
-
-    coefficients, *_ = np.linalg.lstsq(x_fit, y_fit, rcond=None)
-    if not bool(np.isfinite(coefficients).all()):
-        return values, None, str(ComBatSkipCode.NONFINITE_VALUES), dropped
-
-    batch_coefficients = coefficients[: len(estimable)]
-    cov_coefficients = coefficients[len(estimable) :]
-    grand_mean = float((counts / counts.sum()) @ batch_coefficients)
-
-    residuals = y_fit - x_fit @ coefficients
-    pooled_sd = float(np.sqrt(float(residuals @ residuals) / y_fit.size))
-    scale = max(abs(grand_mean), float(np.max(np.abs(y_fit))), 1.0)
-    if not np.isfinite(pooled_sd) or pooled_sd <= RELATIVE_VARIANCE_FLOOR * scale:
-        return values, None, str(ComBatSkipCode.ZERO_VARIANCE), dropped
-
-    z_fit = (y_fit - grand_mean - cov_fit @ cov_coefficients) / pooled_sd
-    gamma_hat = np.bincount(codes_fit, weights=z_fit, minlength=len(estimable)) / counts
-    delta2_hat = np.asarray(
-        [float(np.var(z_fit[codes_fit == position], ddof=1)) for position in range(len(estimable))],
-        dtype=np.float64,
-    )
-    delta2_hat = np.where(delta2_hat > 0.0, delta2_hat, 1.0)
-
-    if empirical_bayes:
-        gamma_star, delta2_star, converged, iterations, shrunk = _solve_empirical_bayes(
-            z_fit, codes_fit, gamma_hat, delta2_hat, counts, max_iterations, tolerance
-        )
-    else:
-        gamma_star, delta2_star, converged, iterations, shrunk = (
-            gamma_hat,
-            delta2_hat,
-            True,
-            0,
-            False,
-        )
-
-    delta_star = np.sqrt(delta2_star)
-    adjust_rows = usable & in_batch
-    adjusted = values.copy()
-
-    if bool(adjust_rows.any()):
-        codes_all = np.asarray([index[str(b)] for b in batches[adjust_rows]], dtype=np.intp)
-        y_all = values[adjust_rows].to_numpy(dtype=np.float64)
-        cov_all = (
-            design.loc[adjust_rows, list(terms)].to_numpy(dtype=np.float64)
-            if terms
-            else np.zeros((y_all.size, 0), dtype=np.float64)
-        )
-        preserved = grand_mean + cov_all @ cov_coefficients
-        z_all = (y_all - preserved) / pooled_sd
-        standardized = (z_all - gamma_star[codes_all]) / delta_star[codes_all]
-        adjusted.loc[adjust_rows] = standardized * pooled_sd + preserved
-
-    parameters = BatchParameters(
-        region=region,
-        measure_type=measure_type,
-        grand_mean=grand_mean,
-        pooled_sd=pooled_sd,
-        gamma_star={name: float(gamma_star[position]) for name, position in index.items()},
-        delta_star={name: float(delta_star[position]) for name, position in index.items()},
-        n_per_batch={name: int(counts[position]) for name, position in index.items()},
-        covariate_terms=terms,
-        covariate_coefficients={
-            term: float(cov_coefficients[position]) for position, term in enumerate(terms)
-        },
-        n_adjusted=int(adjust_rows.sum()),
-        n_unadjusted=int(len(frame) - int(adjust_rows.sum())),
-        converged=converged,
-        n_iterations=iterations,
-        shrinkage_applied=shrunk,
-    )
-    return adjusted, parameters, None, dropped
+    gamma_bar: float
+    tau2: float
+    shape: float
+    scale: float
+    n_regions: int
 
 
 def _drop_collinear(
@@ -597,6 +471,307 @@ def _drop_collinear(
     return covariates[:, keep], tuple(kept_terms)
 
 
+def _standardize_region(
+    frame: pd.DataFrame,
+    *,
+    key: tuple[str, str],
+    batch_column: str,
+    covariates: Sequence[str],
+    estimation_mask: pd.Series,
+) -> tuple[_RegionState | None, str | None, dict[str, str]]:
+    """Fit the design for one region and take its raw per-batch moments.
+
+    This is everything that can be done without knowing about the other
+    regions. The shrinkage that follows needs all of them, so it happens in a
+    second pass.
+
+    Args:
+        frame: Every row for this region.
+        key: ``(region, measure_type)``.
+        batch_column: Column holding the batch label.
+        covariates: Biological covariates to preserve.
+        estimation_mask: Which rows may contribute to estimation.
+
+    Returns:
+        ``(state, skip_reason, covariates_dropped)``. Exactly one of ``state``
+        and ``skip_reason`` is set.
+    """
+    values = frame[_VALUE].astype("float64")
+    design, dropped = _encode_covariates(frame, covariates)
+
+    complete = values.notna()
+    if not design.empty:
+        complete &= design.notna().all(axis=1)
+    batches = frame[batch_column].astype("string")
+    complete &= batches.notna()
+
+    usable = complete & np.isfinite(values.fillna(np.nan).to_numpy())
+    eligible = usable & estimation_mask.reindex(frame.index, fill_value=False).fillna(False)
+
+    if not bool(eligible.any()):
+        return None, str(ComBatSkipCode.INSUFFICIENT_ROWS), dropped
+
+    sizes = batches[eligible].value_counts()
+    estimable = sorted(str(b) for b, n in sizes.items() if int(n) >= MIN_ROWS_PER_BATCH)
+    if len(estimable) < MIN_BATCHES:
+        return None, str(ComBatSkipCode.SINGLE_BATCH), dropped
+
+    in_batch = batches.isin(estimable)
+    fit_rows = eligible & in_batch
+    if int(fit_rows.sum()) <= len(estimable) + design.shape[1]:
+        return None, str(ComBatSkipCode.INSUFFICIENT_ROWS), dropped
+
+    index = {name: position for position, name in enumerate(estimable)}
+    codes_fit = np.asarray([index[str(b)] for b in batches[fit_rows]], dtype=np.intp)
+    y_fit = values[fit_rows].to_numpy(dtype=np.float64)
+    counts = np.bincount(codes_fit, minlength=len(estimable)).astype(np.float64)
+
+    onehot = np.zeros((y_fit.size, len(estimable)), dtype=np.float64)
+    onehot[np.arange(y_fit.size), codes_fit] = 1.0
+
+    terms = tuple(str(c) for c in design.columns)
+    cov_fit = (
+        design.loc[fit_rows].to_numpy(dtype=np.float64)
+        if terms
+        else np.zeros((y_fit.size, 0), dtype=np.float64)
+    )
+    cov_fit, terms = _drop_collinear(onehot, cov_fit, terms, dropped)
+
+    x_fit = np.hstack([onehot, cov_fit])
+    if np.linalg.matrix_rank(x_fit) < x_fit.shape[1]:
+        return None, str(ComBatSkipCode.SINGULAR_DESIGN), dropped
+
+    coefficients, *_ = np.linalg.lstsq(x_fit, y_fit, rcond=None)
+    if not bool(np.isfinite(coefficients).all()):
+        return None, str(ComBatSkipCode.NONFINITE_VALUES), dropped
+
+    batch_coefficients = coefficients[: len(estimable)]
+    cov_coefficients = coefficients[len(estimable) :]
+    grand_mean = float((counts / counts.sum()) @ batch_coefficients)
+
+    residuals = y_fit - x_fit @ coefficients
+    pooled_sd = float(np.sqrt(float(residuals @ residuals) / y_fit.size))
+    scale = max(abs(grand_mean), float(np.max(np.abs(y_fit))), 1.0)
+    if not np.isfinite(pooled_sd) or pooled_sd <= RELATIVE_VARIANCE_FLOOR * scale:
+        return None, str(ComBatSkipCode.ZERO_VARIANCE), dropped
+
+    z_fit = (y_fit - grand_mean - cov_fit @ cov_coefficients) / pooled_sd
+    gamma_hat = np.bincount(codes_fit, weights=z_fit, minlength=len(estimable)) / counts
+    delta2_hat = np.asarray(
+        [float(np.var(z_fit[codes_fit == position], ddof=1)) for position in range(len(estimable))],
+        dtype=np.float64,
+    )
+    delta2_hat = np.where(delta2_hat > 0.0, delta2_hat, 1.0)
+
+    state = _RegionState(
+        key=key,
+        values=values,
+        batches=batches,
+        estimable=estimable,
+        adjust_rows=usable & in_batch,
+        design=design,
+        terms=terms,
+        cov_coefficients=cov_coefficients,
+        grand_mean=grand_mean,
+        pooled_sd=pooled_sd,
+        codes_fit=codes_fit,
+        z_fit=z_fit,
+        counts=counts,
+        gamma_hat=gamma_hat,
+        delta2_hat=delta2_hat,
+    )
+    return state, None, dropped
+
+
+def _batch_priors(states: list[_RegionState]) -> dict[str, _BatchPrior]:
+    """Estimate each batch's hyperparameters across the regions it appears in.
+
+    This is the pooling direction Johnson et al. specify. A batch appearing in
+    only one region gets no prior — a single value has no variance — and is
+    left unshrunk rather than shrunk toward itself.
+
+    Args:
+        states: Standardized regions.
+
+    Returns:
+        Batch name to its hyperparameters, omitting batches without one.
+    """
+    collected: dict[str, list[tuple[float, float]]] = {}
+    for state in states:
+        for position, batch in enumerate(state.estimable):
+            collected.setdefault(batch, []).append(
+                (float(state.gamma_hat[position]), float(state.delta2_hat[position]))
+            )
+
+    priors: dict[str, _BatchPrior] = {}
+    for batch, entries in collected.items():
+        if len(entries) < 2:
+            continue
+        gamma = np.asarray([g for g, _d in entries], dtype=np.float64)
+        delta2 = np.asarray([d for _g, d in entries], dtype=np.float64)
+        moments = _moment_priors(delta2)
+        tau2 = float(gamma.var(ddof=1))
+        if moments is None or not np.isfinite(tau2):
+            continue
+        shape, scale = moments
+        priors[batch] = _BatchPrior(
+            gamma_bar=float(gamma.mean()),
+            tau2=tau2,
+            shape=shape,
+            scale=scale,
+            n_regions=len(entries),
+        )
+    return priors
+
+
+def _solve_batch(
+    prior: _BatchPrior,
+    gamma_hat: npt.NDArray[np.float64],
+    delta2_hat: npt.NDArray[np.float64],
+    counts: npt.NDArray[np.float64],
+    residual_sums: list[npt.NDArray[np.float64]],
+    max_iterations: int,
+    tolerance: float,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], bool, int]:
+    """Iterate the conditional posterior means for one batch across its regions.
+
+    Args:
+        prior: The batch's hyperparameters.
+        gamma_hat: Unshrunk additive term per region.
+        delta2_hat: Unshrunk residual variance per region.
+        counts: Estimation observations per region.
+        residual_sums: Standardized values for this batch, per region.
+        max_iterations: Iteration cap.
+        tolerance: Maximum relative change accepted as converged.
+
+    Returns:
+        ``(gamma_star, delta2_star, converged, n_iterations)``.
+    """
+    gamma_old = gamma_hat.copy()
+    delta2_old = delta2_hat.copy()
+
+    for iteration in range(1, max_iterations + 1):
+        numerator = prior.tau2 * counts * gamma_hat + delta2_old * prior.gamma_bar
+        denominator = prior.tau2 * counts + delta2_old
+        gamma_new = np.where(denominator > 0.0, numerator / denominator, gamma_hat)
+
+        sum2 = np.asarray(
+            [float(((z - gamma_new[i]) ** 2).sum()) for i, z in enumerate(residual_sums)],
+            dtype=np.float64,
+        )
+        delta2_new = (0.5 * sum2 + prior.scale) / (counts / 2.0 + prior.shape - 1.0)
+        delta2_new = np.where(delta2_new > 0.0, delta2_new, delta2_old)
+
+        change = max(
+            float(np.max(np.abs(gamma_new - gamma_old) / (np.abs(gamma_old) + 1e-12))),
+            float(np.max(np.abs(delta2_new - delta2_old) / (np.abs(delta2_old) + 1e-12))),
+        )
+        gamma_old, delta2_old = gamma_new, delta2_new
+        if change < tolerance:
+            return gamma_old, delta2_old, True, iteration
+
+    return gamma_old, delta2_old, False, max_iterations
+
+
+def _shrink(
+    states: list[_RegionState], max_iterations: int, tolerance: float
+) -> tuple[dict[tuple[tuple[str, str], str], tuple[float, float]], dict[str, tuple[bool, int]]]:
+    """Run the empirical-Bayes solve for every batch across every region.
+
+    Args:
+        states: Standardized regions.
+        max_iterations: Iteration cap for each batch's solve.
+        tolerance: Convergence tolerance.
+
+    Returns:
+        ``((region_key, batch) -> (gamma_star, delta2_star))`` and
+        ``batch -> (converged, iterations)`` for the batches that were shrunk.
+    """
+    priors = _batch_priors(states)
+    shrunk: dict[tuple[tuple[str, str], str], tuple[float, float]] = {}
+    status: dict[str, tuple[bool, int]] = {}
+
+    for batch, prior in priors.items():
+        members = [(s, s.estimable.index(batch)) for s in states if batch in s.estimable]
+        gamma_hat = np.asarray([s.gamma_hat[i] for s, i in members], dtype=np.float64)
+        delta2_hat = np.asarray([s.delta2_hat[i] for s, i in members], dtype=np.float64)
+        counts = np.asarray([s.counts[i] for s, i in members], dtype=np.float64)
+        residuals = [s.z_fit[s.codes_fit == i] for s, i in members]
+
+        gamma_star, delta2_star, converged, iterations = _solve_batch(
+            prior, gamma_hat, delta2_hat, counts, residuals, max_iterations, tolerance
+        )
+        status[batch] = (converged, iterations)
+        for position, (state, _index) in enumerate(members):
+            shrunk[(state.key, batch)] = (
+                float(gamma_star[position]),
+                float(delta2_star[position]),
+            )
+
+    return shrunk, status
+
+
+def _adjust_region(
+    state: _RegionState,
+    gamma_star: npt.NDArray[np.float64],
+    delta_star: npt.NDArray[np.float64],
+    *,
+    converged: bool,
+    iterations: int,
+    shrinkage_applied: bool,
+) -> tuple[pd.Series, BatchParameters]:
+    """Back-transform one region and package its parameters.
+
+    Args:
+        state: The standardized region.
+        gamma_star: Additive term per batch, in ``state.estimable`` order.
+        delta_star: Residual SD ratio per batch, in ``state.estimable`` order.
+        converged: Whether the shrinkage solve converged.
+        iterations: Iterations the solve took.
+        shrinkage_applied: Whether any of the region's batches were shrunk.
+
+    Returns:
+        The adjusted values and the region's fitted parameters.
+    """
+    index = {name: position for position, name in enumerate(state.estimable)}
+    adjusted = state.values.copy()
+    rows = state.adjust_rows
+
+    if bool(rows.any()):
+        codes = np.asarray([index[str(b)] for b in state.batches[rows]], dtype=np.intp)
+        y = state.values[rows].to_numpy(dtype=np.float64)
+        cov = (
+            state.design.loc[rows, list(state.terms)].to_numpy(dtype=np.float64)
+            if state.terms
+            else np.zeros((y.size, 0), dtype=np.float64)
+        )
+        preserved = state.grand_mean + cov @ state.cov_coefficients
+        z = (y - preserved) / state.pooled_sd
+        standardized = (z - gamma_star[codes]) / delta_star[codes]
+        adjusted.loc[rows] = standardized * state.pooled_sd + preserved
+
+    parameters = BatchParameters(
+        region=state.key[0],
+        measure_type=state.key[1],
+        grand_mean=state.grand_mean,
+        pooled_sd=state.pooled_sd,
+        gamma_star={name: float(gamma_star[position]) for name, position in index.items()},
+        delta_star={name: float(delta_star[position]) for name, position in index.items()},
+        n_per_batch={name: int(state.counts[position]) for name, position in index.items()},
+        covariate_terms=state.terms,
+        covariate_coefficients={
+            term: float(state.cov_coefficients[position])
+            for position, term in enumerate(state.terms)
+        },
+        n_adjusted=int(rows.sum()),
+        n_unadjusted=int(len(state.values) - int(rows.sum())),
+        converged=converged,
+        n_iterations=iterations,
+        shrinkage_applied=shrinkage_applied,
+    )
+    return adjusted, parameters
+
+
 def run_combat(
     observations: pd.DataFrame,
     *,
@@ -609,16 +784,24 @@ def run_combat(
 ) -> ComBatResult:
     """Harmonize canonical observations with empirical-Bayes ComBat.
 
-    Estimation runs **per region**, because the batch effect is per site per
-    region and because the v1 region set mixes volumes in mm³ with thicknesses
-    in mm — one pooled fit would be dimensionally incoherent. Long format makes
-    that a group-by, which is the canonical schema paying for itself.
+    The design matrix, grand mean, and pooled residual SD are fitted **per
+    region** — the batch effect is per site per region, and the v1 region set
+    mixes volumes in mm³ with thicknesses in mm, so one pooled fit would be
+    dimensionally incoherent. Long format makes that a group-by, which is the
+    canonical schema paying for itself.
 
-    Estimation and application are deliberately separable through
-    ``estimation_mask``: parameters are fitted on the rows the caller trusts,
-    and applied to every row in an estimable batch. Letting known-bad
-    reconstructions set the batch mean they are then corrected by is a way to
-    launder an artifact into a correction.
+    The empirical-Bayes shrinkage then runs **per batch across regions**, which
+    is the direction Johnson et al. specify: a site's prior is estimated from
+    its own effect across all regions, so a thinly-sampled site borrows strength
+    from everywhere it appears. Because standardization has already divided each
+    region by its own residual SD, those terms are dimensionless and pool
+    legitimately.
+
+    Estimation and application are separable through ``estimation_mask``:
+    parameters are fitted on the rows the caller trusts, and applied to every
+    row in an estimable batch. Letting known-bad reconstructions set the batch
+    mean they are then corrected by is a way to launder an artifact into a
+    correction.
 
     Args:
         observations: Canonical observations. Requires ``region``,
@@ -662,32 +845,61 @@ def run_combat(
         mask = aligned.fillna(False).astype(bool)
 
     adjusted = observations[_VALUE].astype("float64").copy()
-    parameters: dict[tuple[str, str], BatchParameters] = {}
+    states: list[_RegionState] = []
     skipped: dict[tuple[str, str], str] = {}
     dropped_overall: dict[str, str] = {}
 
     for (region, measure_type), group in observations.groupby(
         [_REGION, _MEASURE_TYPE], dropna=False, sort=True
     ):
-        values, fitted, reason, dropped = _fit_region(
+        key = (str(region), str(measure_type))
+        state, reason, dropped = _standardize_region(
             group,
-            region=str(region),
-            measure_type=str(measure_type),
+            key=key,
             batch_column=batch_column,
             covariates=requested,
             estimation_mask=mask,
-            empirical_bayes=empirical_bayes,
-            max_iterations=max_iterations,
-            tolerance=tolerance,
         )
-        adjusted.loc[values.index] = values
         for name, code in dropped.items():
             dropped_overall.setdefault(name, code)
-        key = (str(region), str(measure_type))
-        if fitted is None:
+        if state is None:
             skipped[key] = reason or str(ComBatSkipCode.INSUFFICIENT_ROWS)
         else:
-            parameters[key] = fitted
+            states.append(state)
+
+    shrunk: dict[tuple[tuple[str, str], str], tuple[float, float]] = {}
+    status: dict[str, tuple[bool, int]] = {}
+    if empirical_bayes:
+        shrunk, status = _shrink(states, max_iterations, tolerance)
+
+    parameters: dict[tuple[str, str], BatchParameters] = {}
+    for state in states:
+        gamma = state.gamma_hat.copy()
+        delta2 = state.delta2_hat.copy()
+        converged = True
+        iterations = 0
+        applied = False
+
+        for position, batch in enumerate(state.estimable):
+            entry = shrunk.get((state.key, batch))
+            if entry is None:
+                continue
+            gamma[position], delta2[position] = entry
+            batch_converged, batch_iterations = status[batch]
+            converged = converged and batch_converged
+            iterations = max(iterations, batch_iterations)
+            applied = True
+
+        values, params = _adjust_region(
+            state,
+            gamma,
+            np.sqrt(delta2),
+            converged=converged,
+            iterations=iterations,
+            shrinkage_applied=applied,
+        )
+        adjusted.loc[values.index] = values
+        parameters[state.key] = params
 
     return ComBatResult(
         values=adjusted,

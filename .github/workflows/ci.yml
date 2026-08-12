@@ -73,6 +73,25 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -v -m slow --durations=10
 
+  # Checks the in-repo ComBat against neuroCombat, which is the evidence behind
+  # Build.md deviation 1. Its own job because it needs an optional extra that
+  # `uv sync` deliberately does not install — neuroCombat is not a dev
+  # dependency and must never enter the default resolution.
+  xcheck:
+    name: combat cross-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --extra combat-xcheck
+      # -m optional is deselected everywhere else, so this job is the only
+      # place these run. Failing here means our estimator and the reference
+      # have diverged, which is a real finding either way.
+      - run: uv run --extra combat-xcheck pytest -v -m optional
+
   e2e:
     name: e2e (python)
     runs-on: ubuntu-latest

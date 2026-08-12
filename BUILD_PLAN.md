@@ -7,6 +7,8 @@ If a week slips, cut scope, not the date. Cut order is defined in §7.
 *Revision 3 (2026-08-09) — dataset strategy changed: OASIS-3 dropped (institutional registration), Track B is now OpenNeuro, IXI added as a stretch harmonization target. §0.3, §1.2, §1.3, §1.4, §1.5, §3.4, §4, §5.1, §5.3, §6, §7, §8 touched. Scope and ship date unchanged.*
 *Revision 4 (2026-08-10) — Track A split across two ABIDE sources after verifying that the FS6 deposit ships only aggregated tables: ABIDE PCP per-subject FreeSurfer 5.1 `.stats` is the parser target, the FS6 tables are a cross-check. §1.3, §4, §5.2 touched. Two parser defects this exposed are fixed in code. Scope and ship date unchanged.*
 
+*Revision 5 (2026-08-11) — three corrections from implementing §2.3 and measuring it. §2.3.2's criterion 1 and its regime B prediction are both restated; the corrections are recorded inline in those subsections rather than changing the surrounding plan. Scope and ship date unchanged.*
+
 ---
 
 ## 0. Three structural commitments
@@ -263,6 +265,12 @@ Checking that post-harmonization site means are equal is **circular**: equalizin
 Instead, the fixture generator injects **known batch effects and known biological effects simultaneously** (§3), and validation asks four separate questions:
 
 1. **Batch-effect recovery.** Is the *estimated* batch parameter (ComBat's additive/multiplicative site terms) approximately equal to the *injected* site effect? This tests estimation, not enforcement.
+
+   > **Revision 5 correction.** "Equal to the injected site effect" is wrong as written, and a test that takes it literally fails a *correct* estimator. The generator produces `observed = biological × mult[s,r] + add[s,r] + ε`, while standard ComBat carries one additive batch term against a shared covariate block — so γ estimates `add[s,r] + (mult[s,r] − 1) × mean(biological | s,r)`, absorbing the multiplicative *mean* shift. Measured on `recovery.yaml`, comparing against `add` alone is 8× worse than comparing against the realized shift. The realized shift is computable exactly, since `ground_truth.parquet` carries both `value` and `true_biological_value`.
+   >
+   > Second correction: γ is identified only up to a **size-weighted** centering — the batch terms satisfy `Σ_b (n_b/n)·γ_b = 0`, not `mean(γ) = 0`. Equal batch sizes hide the distinction; unequal ones do not. Truth must be centered the same way before comparison.
+   >
+   > Third: **δ has no injected truth to recover.** `EffectSpec` carries no per-site noise term, so no site-specific residual scale was ever injected. δ can be bounded, not recovered. A `SiteSpec.noise_sd_multiplier` would fix this and is a fixture-generator change, not a week-4 one.
 2. **Biological preservation.** Are the injected age, diagnosis, and diagnosis-by-time effects still recoverable after harmonization, within tolerance of their pre-harmonization estimates and their true injected values?
 3. **Site-association reduction.** Does the residual association between site and the outcome fall substantially, after adjusting for the biological covariates? (Adjustment matters: if sites differ in age composition, raw site association *should* remain.)
 4. **No substantial attenuation.** Does the estimated longitudinal slope survive harmonization? A method that flattens the true within-subject trajectory has failed even if criteria 1 and 3 pass.
@@ -284,6 +292,12 @@ def test_combat_does_not_attenuate_injected_longitudinal_slope():
 Criteria 2 and 4 are the ones that catch real failures. A harmonizer that eats your signal passes criterion 3 with flying colours.
 
 Run this suite under two fixture regimes: **site independent of time** (harmonization should work cleanly) and **site confounded with time** (harmonization should visibly attenuate the longitudinal effect). The second regime failing loudly is the *correct* result, and demonstrating it is a stronger portfolio artifact than a suite where everything passes.
+
+> **Revision 5 correction.** Regime B does not attenuate, and the reason is a conflict with §2.3.4 rather than a fixture defect. §2.3.4 requires `time_from_baseline_years` be preserved in the design matrix, and a preserved covariate is exactly the one the batch term cannot absorb. Measured on `confounded.yaml`: the *unharmonized* `time` coefficient comes out **sign-flipped** (+58 against an injected −20 on hippocampus) because the scanner step reads as biology; harmonization recovers it to −19.7. Attenuation appears immediately once `time` is dropped from the covariate set (−7.5), so the predicted failure mode is real but is a property of the **configuration**, not of the regime.
+>
+> Two findings worth carrying forward. The `time:dx_baseline` interaction is far more robust to the confound than the `time` main effect, because a scanner change shifts both diagnosis groups alike and largely cancels — independent support for §2.5.3 making the interaction primary. And none of this makes regime B interpretable: recovery is knowable only because the truth was injected, so the `interpretable: false` verdict must not soften because an estimate happens to land close.
+>
+> The suite therefore asserts the measured behavior, and carries a separate test class demonstrating the attenuation §2.3.2 predicted, under the covariate configuration that actually produces it.
 
 #### 2.3.3 Minimum batch size is an engineering heuristic, not a methodological law
 

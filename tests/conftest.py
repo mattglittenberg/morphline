@@ -2,13 +2,89 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import pandas as pd
 import pytest
 
-from morphline.config import FixtureConfig, PlantedSpec, Regime, SiteSpec, load_config
+from morphline.config import (
+    AnalysisConfig,
+    FixtureConfig,
+    PlantedSpec,
+    QCConfig,
+    Regime,
+    SiteSpec,
+    load_config,
+)
+
+if TYPE_CHECKING:
+    from morphline.fixtures.truth import GroundTruth
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@dataclass(frozen=True)
+class FixtureBundle:
+    """A written fixture tree beside the truth that generated it.
+
+    Recovery tests need both halves and need them consistent: the injected
+    effects are only meaningful against the observations they produced. Keeping
+    them together stops a test from pairing one run's estimates with another
+    run's truth, which fails in a way that looks like estimator bias.
+
+    Attributes:
+        root: The written fixture tree.
+        truth: Injected ground truth, returned by ``write_fixtures`` directly
+            rather than re-read from ``truth/ground_truth.parquet``.
+        observations: QC-annotated canonical observations.
+        ground_truth: Per-observation truth, joinable to ``observations`` on
+            ``(subject_id, session_id, region)``.
+    """
+
+    root: Path
+    truth: GroundTruth
+    observations: pd.DataFrame
+    ground_truth: pd.DataFrame
+
+
+def build_fixture_bundle(
+    config: FixtureConfig,
+    root: Path,
+    qc: QCConfig | None = None,
+    analysis: AnalysisConfig | None = None,
+) -> FixtureBundle:
+    """Generate a fixture tree, ingest it, and apply QC.
+
+    Args:
+        config: Fixture generator configuration.
+        root: Destination for the tree.
+        qc: QC configuration. Defaults to :class:`QCConfig`.
+        analysis: Analysis configuration. Defaults to :class:`AnalysisConfig`.
+
+    Returns:
+        The tree, the injected truth, and the QC-annotated observations.
+    """
+    from morphline.adapters import SyntheticAdapter
+    from morphline.fixtures import write_fixtures
+    from morphline.stages.ingest import ingest
+    from morphline.stages.qc import apply_qc
+
+    truth = write_fixtures(config, root)
+    observations = apply_qc(
+        ingest(SyntheticAdapter(root)).observations,
+        qc or QCConfig(),
+        analysis or AnalysisConfig(),
+    )
+
+    ground_truth = pd.read_parquet(root / "truth" / "ground_truth.parquet")
+    ground_truth["session_id"] = ground_truth["session_id"].astype(str)
+    ground_truth["subject_id"] = ground_truth["subject_id"].astype(str)
+
+    return FixtureBundle(
+        root=root, truth=truth, observations=observations, ground_truth=ground_truth
+    )
 
 
 def make_fixture_config(**overrides: object) -> FixtureConfig:

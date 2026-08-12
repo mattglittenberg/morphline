@@ -42,6 +42,9 @@ jobs:
       - run: uv sync --frozen
       - run: uv run mypy --strict src/
 
+  # Split from `recovery` so the fast signal stays fast. Both are blocking.
+  # Coverage now comes from two jobs and each prints a partial number, which is
+  # harmless while it is ungated — week 6's badge will need `coverage combine`.
   test:
     name: test
     runs-on: ubuntu-latest
@@ -53,7 +56,22 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       # Coverage is measured and printed but not gated: no --cov-fail-under.
-      - run: uv run pytest -v --cov=src/morphline --cov-report=term-missing
+      - run: uv run pytest -v -m "not slow" --cov=src/morphline --cov-report=term-missing
+
+  # The statistical recovery suites: model slope recovery and the four §2.3.2
+  # harmonization criteria over larger fixture trees. These are the tests that
+  # ask whether the methods recover known truth, so they are never optional.
+  recovery:
+    name: recovery (slow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run pytest -v -m slow --durations=10
 
   e2e:
     name: e2e (python)

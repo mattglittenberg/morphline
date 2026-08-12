@@ -185,7 +185,37 @@ class HarmonizationConfig(_Base):
     #: number of batches, covariate balance, outcome variance, and effect
     #: magnitude (§2.3.3).
     min_batch_size: int = 20
+    #: What happens to a batch below ``min_batch_size``. ``report_and_exclude``
+    #: excludes it from *harmonization*, never from the dataset — dropping rows
+    #: here would resurface at the modeling boundary under a cause that is
+    #: false. ``pool`` merges below-threshold batches into one estimation label,
+    #: which asserts they are exchangeable and is defensible only where they
+    #: share a scanner and protocol (§2.3.3). ``passthrough`` harmonizes them
+    #: like any other batch and warns.
     small_batch_policy: Literal["report_and_exclude", "pool", "passthrough"] = "report_and_exclude"
+
+    #: Empirical-Bayes shrinkage of the per-batch terms. ``False`` estimates
+    #: each batch independently, which isolates whether a recovery failure sits
+    #: in the shrinkage or in the standardization, and throws away the method's
+    #: main defence against small batches.
+    empirical_bayes: bool = True
+    eb_tolerance: float = Field(default=1e-4, gt=0.0)
+    eb_max_iterations: int = Field(default=100, ge=1)
+    #: Which rows estimate the batch terms. ``analysis_included`` fits on
+    #: QC-passing rows only and applies the transform to every row: letting
+    #: known-bad reconstructions set the batch mean they are then corrected by
+    #: launders an artifact into a correction. Recorded here rather than
+    #: hardcoded so the choice reaches the provenance block.
+    estimation_set: Literal["analysis_included", "all"] = "analysis_included"
+
+    #: Acceptance criteria for the §2.3.2 fixture validation suite, on the same
+    #: rule as :class:`QCConfig`'s targets: thresholds live in config and the
+    #: tests assert against them, so tightening a criterion is a config edit
+    #: rather than a hunt through assertions.
+    target_batch_recovery_tolerance: float = 0.15
+    target_biological_preservation_tolerance: float = 0.35
+    target_site_association_reduction: float = 0.50
+    target_slope_attenuation_max: float = 0.25
 
 
 class AnalysisConfig(_Base):
@@ -259,21 +289,6 @@ class RunConfig(_Base):
                 "there is nothing to ingest. Set dataset.path for a real dataset, or add "
                 "a fixtures block to generate one."
             )
-        return self
-
-    @model_validator(mode="after")
-    def _check_batch_guard(self) -> RunConfig:
-        """Warn-by-construction when no site can satisfy ``min_batch_size``.
-
-        Not an error: small-batch handling is a documented, configurable
-        policy, and refusing to run would make the honest small-n case
-        unrunnable. But a config where *every* batch is below threshold is
-        almost always a mistake worth catching at load time.
-        """
-        if self.harmonization.enabled and self.fixtures and self.fixtures.sites:
-            largest = max(site.n_subjects for site in self.fixtures.sites)
-            if largest < self.harmonization.min_batch_size:
-                object.__setattr__(self, "_all_batches_small", True)
         return self
 
     def resolved(self) -> dict[str, Any]:

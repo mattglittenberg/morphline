@@ -2,7 +2,7 @@
 
 **A BIDS-aware longitudinal neuroimaging derivatives pipeline.** Ingests FreeSurfer `.stats` output, accounts for every observation it gains and loses, quality-controls it, harmonizes across scanners, fits longitudinal mixed-effects models, and emits a self-contained HTML report you could reconstruct the entire run from.
 
-> **Status: `v0.1.0` — walking skeleton.** Every stage exists and runs end to end on synthetic fixtures, but only ingestion and data accounting are deep. QC passes everything, harmonization is an identity transform, and the model fits a single region. See [Build.md](Build.md) for what lands when.
+> **Status: past the `v0.1.0` walking skeleton.** Ingestion, data accounting, QC, and ComBat harmonization are implemented and validated; the model still fits a single region. See [Build.md](Build.md) for what lands when.
 
 <!-- Badges: replace OWNER with the GitHub account before the repo goes public. -->
 [![CI](https://github.com/OWNER/morphline/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/morphline/actions/workflows/ci.yml)

@@ -222,11 +222,13 @@
 
   {# ---- 3. QC (§2.4) ---- #}
   <h2>3. Quality control</h2>
-  <div class="callout warn">
-    <strong>v0.1.0 stub.</strong> No QC checks are implemented, so every
-    observation is marked PASS. The three-level status model, the flag
-    structure, and the analysis-inclusion policy are already in place; week 3
-    fills in the checks and the sensitivity/specificity validation.
+  <div class="callout">
+    QC <strong>classifies</strong>; the analysis layer <strong>decides</strong>.
+    <code>qc_status</code> is three-level and separate from
+    <code>analysis_included</code>, which comes from an explicit configured
+    policy — so review-worthy observations stay visible instead of vanishing
+    into an exclusion list. No check here can distinguish segmentation failure
+    from biology, and none of them claims to.
   </div>
   {% if qc_summary and qc_summary.by_status %}
   <table>
@@ -275,10 +277,113 @@
     variance, and the magnitude of the batch effect relative to it.
   </p>
   <table>
-    <thead><tr><th>Batch</th><th class="num">Subjects</th></tr></thead>
+    <thead><tr>
+      <th>Batch</th><th class="num">Subjects</th><th class="num">Observations</th>
+      <th>Sex</th><th>Diagnosis</th><th class="num">Age (mean)</th>
+    </tr></thead>
     <tbody>
       {% for batch, n in small_batches.items() %}
-      <tr><td>{{ batch }}</td><td class="num">{{ n }}</td></tr>
+      {% set comp = small_batch_composition.get(batch, {}) %}
+      <tr>
+        <td>{{ batch }}</td>
+        <td class="num">{{ n }}</td>
+        <td class="num">{{ comp.get("n_observations", "&mdash;") }}</td>
+        <td>{% for k, v in (comp.get("sex") or {}).items() %}{{ k }}&nbsp;{{ v }} {% endfor %}</td>
+        <td>{% for k, v in (comp.get("dx_baseline") or {}).items() %}{{ k }}&nbsp;{{ v }} {% endfor %}</td>
+        <td class="num">
+          {% if comp.get("age_baseline_mean") is not none %}
+          {{ "%.1f"|format(comp.age_baseline_mean) }}
+          {% else %}&mdash;{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if combat %}
+  <h3>Estimated batch parameters</h3>
+  <p class="sub">
+    ComBat (Johnson et al. 2007), parametric empirical Bayes, implemented
+    in-repo. &gamma; is the additive batch term shown in the measure's native
+    units; &delta; is the residual scale, where 1.0 means the batch's spread
+    matches the pooled spread. &gamma; is identified only up to a size-weighted
+    centering, so the terms sum to zero across batches by construction and an
+    individual value is meaningful only relative to the others.
+    {% if harmonization_estimation.get("estimation_set") == "analysis_included" %}
+    Terms were estimated on QC-passing observations only
+    ({{ harmonization_estimation.n_estimation_rows }} of
+    {{ harmonization_estimation.n_rows }} rows) and applied to every row.
+    {% endif %}
+  </p>
+  {% if combat.covariates_dropped %}
+  <div class="callout warn">
+    <strong>Covariates left out of the design matrix:</strong>
+    {% for name, reason in combat.covariates_dropped.items() %}
+    <code>{{ name }}</code> ({{ reason }}){{ ", " if not loop.last }}
+    {% endfor %}.
+    Their variation is not protected from being absorbed into the batch terms.
+  </div>
+  {% endif %}
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th>Region</th><th>Measure</th><th>Batch</th>
+      <th class="num">n</th><th class="num">&gamma; (native)</th><th class="num">&delta;</th>
+    </tr></thead>
+    <tbody>
+      {% for p in combat.parameters %}
+      {% for batch, gamma in p.gamma_native.items() %}
+      <tr>
+        <td>{{ p.region if loop.first }}</td>
+        <td>{{ p.measure_type if loop.first }}</td>
+        <td>{{ batch }}</td>
+        <td class="num">{{ p.n_per_batch[batch] }}</td>
+        <td class="num">{{ "%.3g"|format(gamma) }}</td>
+        <td class="num">{{ "%.3f"|format(p.delta_star[batch]) }}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if combat and combat.skipped %}
+  <h3>Regions left unharmonized</h3>
+  <p class="sub">
+    Reason-coded rather than dropped. These observations keep their original
+    values and remain in the output.
+  </p>
+  <table>
+    <thead><tr><th>Region</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for key, reason in combat.skipped.items() %}
+      <tr><td>{{ key }}</td><td><code>{{ reason }}</code></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if harmonization_pooling %}
+  <h3>Pooled batches</h3>
+  <p class="sub">
+    Pooling asserts the merged batches are exchangeable. That claim is not
+    checkable from the data, and it changed the estimate, so it is recorded
+    here and in the provenance block.
+  </p>
+  <table>
+    <thead><tr>
+      <th>Pooled label</th><th>Members</th><th>Scanner</th><th class="num">Subjects</th>
+    </tr></thead>
+    <tbody>
+      {% for m in harmonization_pooling.get("merged", []) %}
+      <tr>
+        <td><code>{{ m.label }}</code></td>
+        <td>{{ m.members | join(", ") }}</td>
+        <td>{{ m.scanner_manufacturer }} {{ m.scanner_model }} @ {{ m.field_strength_tesla }}T</td>
+        <td class="num">{{ m.n_subjects }}</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -368,11 +473,13 @@
   {% endfor %}
 
   <div class="lim">
-    <strong>Walking skeleton, not a validated analysis</strong>
+    <strong>The model fits a single region</strong>
     <p>
-      This is v0.1.0. QC marks every observation PASS, harmonization is an
-      identity transform, and the model fits a single region. No number in
-      this report should be read as a finding.
+      Ingestion, accounting, QC, and harmonization are implemented and
+      validated against injected ground truth. The modeling stage is not: it
+      fits one region rather than the declared 28-test family, so the
+      multiplicity correction has a family of one and no result in the model
+      section should be read as a finding.
     </p>
   </div>
 

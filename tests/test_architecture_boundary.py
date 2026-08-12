@@ -30,6 +30,7 @@ DOWNSTREAM_MODULES = (
     SRC / "stages" / "harmonize.py",
     SRC / "stages" / "model.py",
     SRC / "stages" / "report.py",
+    SRC / "combat.py",
     SRC / "regions.py",
     SRC / "schema.py",
 )

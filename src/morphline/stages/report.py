@@ -25,6 +25,8 @@ from typing import Any
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from morphline.stages.model import PRIMARY_TERM, SECONDARY_TERMS
+
 TEMPLATE_DIR = Path(__file__).parent.parent / "report" / "templates"
 
 
@@ -137,6 +139,20 @@ def _dynamic_limitations(inputs: ReportInputs) -> list[dict[str, str]]:
             }
         )
 
+    sensitivity = inputs.model.get("sensitivity")
+    if sensitivity and sensitivity.get("applicable") and sensitivity.get("n_sign_flips"):
+        items.append(
+            {
+                "title": "Conclusions depend on the harmonization assumption",
+                "body": (
+                    f"{sensitivity['n_sign_flips']} region(s) change the direction of "
+                    "the estimated effect between the harmonized and unharmonized "
+                    "arms. For those regions the observed data do not determine the "
+                    "sign, and neither arm can be promoted to inference."
+                ),
+            }
+        )
+
     errors = inputs.accounting.get("reconciliation_errors", [])
     if errors:
         items.append(
@@ -188,6 +204,7 @@ def render_report(inputs: ReportInputs) -> str:
     harmonization = inputs.harmonization
     confound = harmonization.get("diagnostics")
 
+    fits = inputs.model.get("fits", [])
     model_rows = [
         {
             "region": f.get("region"),
@@ -195,12 +212,27 @@ def render_report(inputs: ReportInputs) -> str:
             "n_observations": f.get("n_observations"),
             "n_subjects": f.get("n_subjects"),
             "converged": f.get("converged"),
-            "estimate": (f.get("coefficients") or {}).get("time:dx_baseline[T.patient]"),
-            "std_error": (f.get("std_errors") or {}).get("time:dx_baseline[T.patient]"),
-            "p_value": (f.get("p_values") or {}).get("time:dx_baseline[T.patient]"),
-            "q_value": f.get("q_value"),
+            "estimate": (f.get("coefficients") or {}).get(PRIMARY_TERM),
+            "std_error": (f.get("std_errors") or {}).get(PRIMARY_TERM),
+            "p_value": (f.get("p_values") or {}).get(PRIMARY_TERM),
+            "q_value": (f.get("q_values") or {}).get(PRIMARY_TERM),
         }
-        for f in inputs.model.get("fits", [])
+        for f in fits
+    ]
+
+    secondary_rows = [
+        {
+            "region": f.get("region"),
+            "terms": [
+                {
+                    "estimate": (f.get("coefficients") or {}).get(term),
+                    "p_value": (f.get("p_values") or {}).get(term),
+                    "q_value": (f.get("q_values") or {}).get(term),
+                }
+                for term in SECONDARY_TERMS
+            ],
+        }
+        for f in fits
     ]
 
     return template.render(
@@ -214,6 +246,7 @@ def render_report(inputs: ReportInputs) -> str:
         batch_sizes=accounting.get("batch_sizes", {}),
         sessions_per_subject=accounting.get("sessions_per_subject", {}),
         missingness=accounting.get("missingness", {}),
+        completers=accounting.get("completers", {}),
         accounting_notes=accounting.get("notes", []),
         qc_summary=inputs.qc_summary,
         harmonization_notes=harmonization.get("notes", []),
@@ -227,6 +260,11 @@ def render_report(inputs: ReportInputs) -> str:
         harmonization_pooling=harmonization.get("pooling"),
         model=inputs.model,
         model_rows=model_rows,
+        secondary_rows=secondary_rows,
+        primary_term=PRIMARY_TERM,
+        secondary_terms=list(SECONDARY_TERMS),
+        family_sizes=inputs.model.get("family_sizes", {}),
+        sensitivity=inputs.model.get("sensitivity"),
         dynamic_limitations=_dynamic_limitations(inputs),
     )
 

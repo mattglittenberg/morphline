@@ -7,6 +7,7 @@ process MODEL {
 
     input:
     path observations
+    path unharmonized
     path config
 
     output:
@@ -16,7 +17,8 @@ process MODEL {
 
     script:
     """
-    morphline model --config ${config} --observations ${observations} --outdir .
+    morphline model --config ${config} --observations ${observations} \\
+        --unharmonized ${unharmonized} --outdir .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

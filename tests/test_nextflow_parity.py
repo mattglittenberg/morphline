@@ -88,12 +88,16 @@ def staged_run(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "--outdir",
         str(work),
     )
+    # MODEL takes both arms, mirroring main.nf: the harmonized values it fits
+    # and the pre-harmonization values the sensitivity comparison needs.
     morphline(
         "model",
         "--config",
         cfg,
         "--observations",
         str(work / "harmonized_observations.parquet"),
+        "--unharmonized",
+        str(work / "qc_observations.parquet"),
         "--outdir",
         str(work),
     )
@@ -185,6 +189,22 @@ def test_staged_model_results_match_inprocess(staged_run: Path, inprocess_run: P
     inproc = pd.read_parquet(inprocess_run / "model_results.parquet")
     assert staged["region"].tolist() == inproc["region"].tolist()
     assert staged["estimate"].iloc[0] == pytest.approx(inproc["estimate"].iloc[0], rel=1e-9)
+
+
+def test_staged_sensitivity_arm_matches_inprocess(staged_run: Path, inprocess_run: Path) -> None:
+    """The second arm is wired through the staged path too.
+
+    It reaches MODEL as a separate input rather than being derived inside the
+    stage, so it is exactly the kind of thing that can be present in-process
+    and silently absent under Nextflow.
+    """
+    staged = json.loads((staged_run / "model_results.json").read_text(encoding="utf-8"))
+    inproc = json.loads((inprocess_run / "model_results.json").read_text(encoding="utf-8"))
+
+    assert staged["sensitivity"] is not None, "staged run produced no sensitivity arm"
+    assert staged["sensitivity"]["applicable"] == inproc["sensitivity"]["applicable"]
+    assert staged["sensitivity"]["n_comparable"] == inproc["sensitivity"]["n_comparable"]
+    assert staged["sensitivity"]["n_sign_flips"] == inproc["sensitivity"]["n_sign_flips"]
 
 
 def test_staged_report_has_the_provenance_block(staged_run: Path) -> None:

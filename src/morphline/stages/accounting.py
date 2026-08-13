@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pandas as pd
 
@@ -68,6 +68,8 @@ class AccountingReport:
         missingness: Counts by cause (§2.5.4).
         missingness_by_site: Missingness causes broken down by site.
         missingness_by_timepoint: Missingness causes broken down by session.
+        completers: Baseline comparison of completers against non-completers,
+            the §2.5.4 check on whether the MAR assumption is load-bearing.
         notes: Free-text observations worth surfacing in the report.
     """
 
@@ -82,6 +84,7 @@ class AccountingReport:
     missingness: dict[str, int] = field(default_factory=dict)
     missingness_by_site: dict[str, dict[str, int]] = field(default_factory=dict)
     missingness_by_timepoint: dict[str, dict[str, int]] = field(default_factory=dict)
+    completers: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def funnel_frame(self) -> pd.DataFrame:
@@ -128,6 +131,7 @@ class AccountingReport:
             "missingness": self.missingness,
             "missingness_by_site": self.missingness_by_site,
             "missingness_by_timepoint": self.missingness_by_timepoint,
+            "completers": self.completers,
             "notes": self.notes,
             "reconciles": not self.reconcile(),
             "reconciliation_errors": self.reconcile(),
@@ -392,7 +396,186 @@ def build_accounting(
     report.missingness = planned_missing
     report.missingness_by_site = _missingness_by(expected_sessions, observations, "site")
     report.missingness_by_timepoint = _missingness_by(expected_sessions, observations, "session_id")
+    report.completers = completer_comparison(expected_sessions, observations)
     return report
+
+
+#: Baseline covariates compared between completers and non-completers, split
+#: by how a difference in them is summarised.
+_CONTINUOUS_BASELINE: Final = ("age_baseline", "etiv_baseline")
+_CATEGORICAL_BASELINE: Final = ("sex", "dx_baseline", "site")
+
+
+def _baseline_rows(observations: pd.DataFrame) -> pd.DataFrame:
+    """Return one row per subject carrying its baseline covariates."""
+    columns = [
+        c for c in (*_CONTINUOUS_BASELINE, *_CATEGORICAL_BASELINE) if c in observations.columns
+    ]
+    if not columns or "subject_id" not in observations.columns:
+        return pd.DataFrame()
+    return observations.groupby("subject_id", dropna=False)[columns].first()
+
+
+def _continuous_summary(values: pd.Series) -> dict[str, float | int | None]:
+    """Summarise one continuous baseline covariate for one group."""
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return {"n": 0, "mean": None, "sd": None}
+    return {
+        "n": int(numeric.size),
+        "mean": float(numeric.mean()),
+        "sd": float(numeric.std(ddof=1)) if numeric.size > 1 else 0.0,
+    }
+
+
+def _standardized_difference(
+    left: dict[str, float | int | None], right: dict[str, float | int | None]
+) -> float | None:
+    """Return the standardized mean difference between two group summaries.
+
+    Reported instead of a p-value on purpose. A significance test here answers
+    "is the sample large enough to detect a difference", which is not the
+    question — the question is whether the groups differ enough for the MAR
+    assumption to be doing real work (§2.5.4).
+    """
+    left_mean, right_mean = left.get("mean"), right.get("mean")
+    left_sd, right_sd = left.get("sd"), right.get("sd")
+    if left_mean is None or right_mean is None or left_sd is None or right_sd is None:
+        return None
+    pooled = ((float(left_sd) ** 2 + float(right_sd) ** 2) / 2.0) ** 0.5
+    if pooled == 0.0:
+        return None
+    return float((float(left_mean) - float(right_mean)) / pooled)
+
+
+def _categorical_summary(values: pd.Series) -> dict[str, float]:
+    """Return level proportions for one categorical baseline covariate."""
+    known = values.dropna()
+    if known.empty:
+        return {}
+    counts = known.astype(str).value_counts(normalize=True)
+    return {str(level): float(share) for level, share in counts.items()}
+
+
+def completer_comparison(
+    expected_sessions: pd.DataFrame, observations: pd.DataFrame
+) -> dict[str, Any]:
+    """Compare baseline characteristics of completers and non-completers (§2.5.4).
+
+    The pipeline's validity rests on a missing-at-random assumption, and that
+    assumption is load-bearing exactly where dropout is *caused* by the process
+    under study. This comparison is the cheap check on it: if the subjects who
+    dropped out differ at baseline from those who did not, MAR is doing more
+    work than the analysis can justify, and the report must say so.
+
+    Subjects who produced no observations at all are counted but never
+    compared. They are the group most likely to be informatively missing, so
+    silently dropping them would bias the very comparison meant to detect bias.
+
+    Args:
+        expected_sessions: Sessions the dataset claims to contain.
+        observations: Canonical observations, supplying baseline covariates.
+
+    Returns:
+        The comparison, or a mapping whose ``applicable`` is ``False`` and
+        whose ``reason`` states why the question could not be asked.
+    """
+    if expected_sessions.empty or "subject_id" not in expected_sessions.columns:
+        return {
+            "applicable": False,
+            "reason": "the dataset supplied no session roster, so dropout cannot be identified",
+        }
+
+    expected_per_subject = expected_sessions.groupby("subject_id", dropna=False).size()
+    if int(expected_per_subject.max()) <= 1:
+        return {
+            "applicable": False,
+            "reason": (
+                "every subject has at most one expected session, so this dataset is "
+                "cross-sectional and there is no dropout to compare. Completion is "
+                "not a meaningful category here"
+            ),
+            "n_subjects": int(expected_per_subject.size),
+        }
+
+    if observations.empty or "subject_id" not in observations.columns:
+        observed_per_subject = pd.Series(dtype=int)
+    else:
+        observed_per_subject = observations.groupby("subject_id", dropna=False)[
+            "session_id"
+        ].nunique()
+
+    observed = observed_per_subject.reindex(expected_per_subject.index).fillna(0).astype(int)
+    completers = observed.index[observed == expected_per_subject]
+    partial = observed.index[(observed > 0) & (observed < expected_per_subject)]
+    absent = observed.index[observed == 0]
+
+    baseline = _baseline_rows(observations)
+    left = baseline.reindex(completers).dropna(how="all") if not baseline.empty else baseline
+    right = baseline.reindex(partial).dropna(how="all") if not baseline.empty else baseline
+
+    continuous: dict[str, dict[str, Any]] = {}
+    categorical: dict[str, dict[str, Any]] = {}
+    if not baseline.empty:
+        for column in _CONTINUOUS_BASELINE:
+            if column not in baseline.columns:
+                continue
+            summaries = (_continuous_summary(left[column]), _continuous_summary(right[column]))
+            continuous[column] = {
+                "completers": summaries[0],
+                "non_completers": summaries[1],
+                "standardized_difference": _standardized_difference(*summaries),
+            }
+        for column in _CATEGORICAL_BASELINE:
+            if column not in baseline.columns:
+                continue
+            categorical[column] = {
+                "completers": _categorical_summary(left[column]),
+                "non_completers": _categorical_summary(right[column]),
+            }
+
+    notes: list[str] = []
+    if len(partial) == 0:
+        notes.append(
+            "Every subject with data completed every expected session, so there is no "
+            "dropout to compare against. This is a property of the dataset, not "
+            "evidence that missingness is ignorable."
+        )
+    if len(absent):
+        notes.append(
+            f"{len(absent)} subject(s) produced no observations at all and carry no "
+            "baseline covariates, so they cannot enter the comparison. They are "
+            "counted here because that group is the most likely to be informatively "
+            "missing, and omitting it silently would bias the check itself."
+        )
+    notable = [
+        f"{column} (SMD {stats['standardized_difference']:.2f})"
+        for column, stats in continuous.items()
+        if stats["standardized_difference"] is not None
+        and abs(float(stats["standardized_difference"])) >= 0.1
+    ]
+    if notable:
+        notes.append(
+            "Completers and non-completers differ at baseline on "
+            + ", ".join(notable)
+            + ". A standardized difference of 0.1 or more is the conventional "
+            "threshold for imbalance worth reporting, and it weakens the MAR "
+            "assumption the longitudinal estimates rest on (§2.5.4)."
+        )
+
+    return {
+        "applicable": True,
+        "definition": (
+            "a completer produced observations for every session the dataset expects "
+            "of that subject; a non-completer produced at least one but not all"
+        ),
+        "n_completers": len(completers),
+        "n_non_completers": len(partial),
+        "n_without_baseline": len(absent),
+        "continuous": continuous,
+        "categorical": categorical,
+        "notes": notes,
+    }
 
 
 def _missingness_by(

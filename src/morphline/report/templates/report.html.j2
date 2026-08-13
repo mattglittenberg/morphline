@@ -178,6 +178,104 @@
   </table>
   {% endif %}
 
+  <h3>Completers vs non-completers</h3>
+  {% if not completers.get("applicable") %}
+  <div class="callout">
+    <strong>Not applicable.</strong> {{ completers.get("reason", "no comparison was run") }}.
+  </div>
+  {% else %}
+  <p class="sub">
+    {{ completers.definition | capitalize }}. The MAR assumption behind the
+    longitudinal estimates is weakest where dropout is caused by the process
+    being studied, so baseline differences between these groups are reported
+    rather than assumed away (§2.5.4). Standardized mean differences are given
+    instead of p-values: the question is whether the groups differ enough to
+    matter, not whether the sample is large enough to detect that they do.
+  </p>
+
+  <dl class="kv">
+    <dt>completers</dt><dd>{{ completers.n_completers }} subjects</dd>
+    <dt>non-completers</dt><dd>{{ completers.n_non_completers }} subjects</dd>
+    <dt>no baseline data</dt>
+    <dd>{{ completers.n_without_baseline }} subjects, not comparable</dd>
+  </dl>
+
+  {% if completers.continuous %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Baseline covariate</th>
+        <th class="num">Completers</th><th class="num">Non-completers</th>
+        <th class="num">SMD</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for name, stats in completers.continuous.items() %}
+      <tr>
+        <td><code>{{ name }}</code></td>
+        <td class="num">
+          {% if stats.completers.mean is not none %}
+          {{ "%.1f"|format(stats.completers.mean) }} &plusmn; {{ "%.1f"|format(stats.completers.sd) }}
+          (n={{ stats.completers.n }})
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if stats.non_completers.mean is not none %}
+          {{ "%.1f"|format(stats.non_completers.mean) }} &plusmn; {{ "%.1f"|format(stats.non_completers.sd) }}
+          (n={{ stats.non_completers.n }})
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if stats.standardized_difference is not none %}
+          {% if stats.standardized_difference | abs >= 0.1 %}
+          <span class="badge bad">{{ "%.2f"|format(stats.standardized_difference) }}</span>
+          {% else %}{{ "%.2f"|format(stats.standardized_difference) }}{% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if completers.categorical %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Baseline covariate</th><th>Completers</th><th>Non-completers</th></tr>
+    </thead>
+    <tbody>
+      {% for name, stats in completers.categorical.items() %}
+      <tr>
+        <td><code>{{ name }}</code></td>
+        <td>
+          {% for level, share in stats.completers.items() %}
+          {{ level }} {{ "%.0f%%"|format(100 * share) }}{% if not loop.last %}, {% endif %}
+          {% else %}—{% endfor %}
+        </td>
+        <td>
+          {% for level, share in stats.non_completers.items() %}
+          {{ level }} {{ "%.0f%%"|format(100 * share) }}{% if not loop.last %}, {% endif %}
+          {% else %}—{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% if completers.get("notes") %}
+  <div class="callout">
+    <ul class="tight">
+      {% for note in completers.notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   <h3>Metadata coverage</h3>
   <div class="scroll">
   <table>
@@ -409,8 +507,13 @@
     <dt>specification</dt>
     <dd>value ~ age_baseline + time + dx_baseline + time:dx_baseline + sex + etiv_baseline</dd>
     <dt>random effects</dt><dd>intercept + slope on time, grouped by subject_id</dd>
-    <dt>primary family size</dt><dd>{{ model.family_size }} test(s)</dd>
-    <dt>FDR alpha</dt><dd>{{ model.fdr_alpha }}</dd>
+    <dt>primary family</dt>
+    <dd>
+      <code>{{ primary_term }}</code> across {{ model.family_size }} regional
+      tests (14 structures &times; 2 hemispheres); {{ family_sizes.get(primary_term, 0) }}
+      carried a p-value and were corrected
+    </dd>
+    <dt>FDR alpha</dt><dd>{{ model.fdr_alpha }}, applied within each family separately</dd>
     <dt>convergence rate</dt><dd>{{ "%.0f%%"|format(100 * model.convergence_rate) }}</dd>
     <dt>modeled observations</dt><dd>{{ model.n_modeled_observations }}</dd>
   </dl>
@@ -450,6 +553,116 @@
     are counted in the multiplicity family.
   </p>
 
+  <h3>Secondary families — exploratory</h3>
+  <div class="callout warn">
+    <strong>Each secondary effect is its own family, corrected separately.</strong>
+    BH-FDR is applied within each column below independently, never across
+    them and never together with the primary family. A <em>q</em> here is not
+    comparable to a <em>q</em> in the primary table, and none of these tests
+    are part of the declared hypothesis (§2.5.3).
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th rowspan="2">Region</th>
+        {% for term in secondary_terms %}
+        <th colspan="3"><code>{{ term }}</code><br>
+          <span class="sub">{{ family_sizes.get(term, 0) }} tests</span></th>
+        {% endfor %}
+      </tr>
+      <tr>
+        {% for term in secondary_terms %}
+        <th class="num">Estimate</th><th class="num">p</th><th class="num">q</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in secondary_rows %}
+      <tr>
+        <td>{{ row.region }}</td>
+        {% for t in row.terms %}
+        <td class="num">{{ "%.4f"|format(t.estimate) if t.estimate is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(t.p_value) if t.p_value is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(t.q_value) if t.q_value is not none else "—" }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Harmonized vs unharmonized — sensitivity analysis</h3>
+  {% if not sensitivity %}
+  <div class="callout">
+    <strong>Not run.</strong> The model was fitted on one arm only, so there is
+    no evidence here about how far the conclusions depend on the harmonization
+    choice. Absence of this comparison is not evidence that the choice does not
+    matter.
+  </div>
+  {% elif not sensitivity.applicable %}
+  <div class="callout">
+    <strong>Not applicable.</strong> Harmonization changed no values in this
+    run, so the two arms are the same fit reported twice.
+  </div>
+  {% else %}
+  <div class="callout warn">
+    <strong>Neither arm is inference.</strong> The harmonized arm is the
+    primary run and the unharmonized arm shows how much the conclusions move
+    when that assumption is dropped. Where scanner is confounded with time, a
+    scanner step and a biological change of the same size are the same
+    observation, so agreement between the arms is not evidence of correctness
+    and disagreement identifies which conclusions were never supportable.
+  </div>
+
+  <dl class="kv">
+    <dt>regions estimated under both arms</dt>
+    <dd>{{ sensitivity.n_comparable }} of {{ sensitivity.rows | length }}</dd>
+    <dt>direction changes</dt><dd>{{ sensitivity.n_sign_flips }}</dd>
+    <dt>significance changes</dt><dd>{{ sensitivity.n_significance_changes }}</dd>
+  </dl>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th class="num">Harmonized</th><th class="num">Unharmonized</th>
+        <th class="num">Difference</th>
+        <th class="num">q (harm.)</th><th class="num">q (unharm.)</th>
+        <th>Direction</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sensitivity.rows %}
+      <tr>
+        <td>{{ row.region }}</td>
+        <td class="num">{{ "%.4f"|format(row.harmonized) if row.harmonized is not none else "—" }}</td>
+        <td class="num">{{ "%.4f"|format(row.unharmonized) if row.unharmonized is not none else "—" }}</td>
+        <td class="num">{{ "%.4f"|format(row.difference) if row.difference is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(row.harmonized_q) if row.harmonized_q is not none else "—" }}</td>
+        <td class="num">{{ "%.4g"|format(row.unharmonized_q) if row.unharmonized_q is not none else "—" }}</td>
+        <td>
+          {% if not row.comparable %}<span class="badge">n/a</span>
+          {% elif row.sign_flipped %}<span class="badge bad">flips</span>
+          {% else %}<span class="badge ok">agrees</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if sensitivity and sensitivity.notes %}
+  <div class="callout">
+    <ul class="tight">
+      {% for note in sensitivity.notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   {% if model.notes %}
   <div class="callout">
     <ul class="tight">
@@ -473,13 +686,15 @@
   {% endfor %}
 
   <div class="lim">
-    <strong>The model fits a single region</strong>
+    <strong>Secondary families are exploratory, not hypotheses</strong>
     <p>
-      Ingestion, accounting, QC, and harmonization are implemented and
-      validated against injected ground truth. The modeling stage is not: it
-      fits one region rather than the declared 28-test family, so the
-      multiplicity correction has a family of one and no result in the model
-      section should be read as a finding.
+      Only the <code>time &times; diagnosis</code> interaction is a declared
+      hypothesis. The main effects of <code>time</code>,
+      <code>dx_baseline</code>, and <code>age_baseline</code> are each
+      corrected within their own family and reported for completeness; they
+      were not pre-specified, and reading a small <em>q</em> among them as a
+      finding is exactly the multiplicity error the family declaration exists
+      to prevent.
     </p>
   </div>
 

@@ -73,7 +73,9 @@ workflow {
 
     QC(COLLECT_CANONICAL.out.parquet, ch_config)
     HARMONIZE(QC.out.parquet, ch_config)
-    MODEL(HARMONIZE.out.parquet, ch_config)
+    // Both arms reach MODEL: the harmonized values it fits, and the
+    // pre-harmonization values the §2.3.1 sensitivity comparison needs.
+    MODEL(HARMONIZE.out.parquet, QC.out.parquet, ch_config)
 
     ACCOUNTING(
         COLLECT_CANONICAL.out.parquet,

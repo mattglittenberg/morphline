@@ -19,6 +19,7 @@ from morphline.stages.accounting import (
     FunnelStage,
     _model_exclusion_causes,
     build_accounting,
+    completer_comparison,
 )
 from morphline.stages.ingest import ingest
 from morphline.stages.qc import apply_qc
@@ -257,3 +258,126 @@ def test_no_modeling_loss_reports_no_causes() -> None:
     observations = modeling_frame(2, ["lh-hippocampus"] * 2)
     fits = pd.DataFrame({"region": ["lh-hippocampus"], "n_observations": [2]})
     assert modeling_causes(observations, modeled=2, model_fits=fits) == {}
+
+
+class TestCompleterComparison:
+    """§2.5.4: the MAR assumption is load-bearing, so dropout gets checked."""
+
+    def roster(self, subjects: int, sessions: int) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {"subject_id": f"sub-{s:03d}", "session_id": f"ses-{t:02d}"}
+                for s in range(subjects)
+                for t in range(sessions)
+            ]
+        )
+
+    def observations(self, rows: list[tuple[str, int, float, str]]) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "subject_id": subject,
+                    "session_id": f"ses-{t:02d}",
+                    "age_baseline": age,
+                    "etiv_baseline": 1_500_000.0,
+                    "sex": sex,
+                    "dx_baseline": "patient",
+                    "site": "site-a",
+                }
+                for subject, sessions, age, sex in rows
+                for t in range(sessions)
+            ]
+        )
+
+    def test_a_cross_sectional_dataset_is_not_applicable(self) -> None:
+        """Completion is not a meaningful category with one session each, and
+        emitting an empty comparison would imply it had been checked."""
+        result = completer_comparison(self.roster(10, 1), self.observations([]))
+
+        assert not result["applicable"]
+        assert "cross-sectional" in result["reason"]
+
+    def test_completers_and_non_completers_are_separated(self) -> None:
+        result = completer_comparison(
+            self.roster(4, 3),
+            self.observations(
+                [
+                    ("sub-000", 3, 70.0, "F"),
+                    ("sub-001", 3, 72.0, "F"),
+                    ("sub-002", 2, 60.0, "M"),
+                    ("sub-003", 1, 62.0, "M"),
+                ]
+            ),
+        )
+
+        assert result["applicable"]
+        assert result["n_completers"] == 2
+        assert result["n_non_completers"] == 2
+
+    def test_subjects_with_no_data_are_counted_but_not_compared(self) -> None:
+        """The group most likely to be informatively missing must not vanish."""
+        result = completer_comparison(
+            self.roster(3, 2),
+            self.observations([("sub-000", 2, 70.0, "F"), ("sub-001", 1, 71.0, "F")]),
+        )
+
+        assert result["n_without_baseline"] == 1
+        assert result["n_completers"] == 1
+        assert result["n_non_completers"] == 1
+        assert any("no observations at all" in note for note in result["notes"])
+
+    def test_baseline_imbalance_is_surfaced(self) -> None:
+        """A large baseline difference must reach the report as a note, not sit
+        in a table for a reader to notice."""
+        result = completer_comparison(
+            self.roster(6, 2),
+            self.observations(
+                [
+                    ("sub-000", 2, 60.0, "F"),
+                    ("sub-001", 2, 61.0, "F"),
+                    ("sub-002", 2, 62.0, "F"),
+                    ("sub-003", 1, 85.0, "M"),
+                    ("sub-004", 1, 86.0, "M"),
+                    ("sub-005", 1, 87.0, "M"),
+                ]
+            ),
+        )
+
+        smd = result["continuous"]["age_baseline"]["standardized_difference"]
+        assert smd is not None and abs(smd) > 1.0
+        assert any("differ at baseline" in note for note in result["notes"])
+
+    def test_categorical_covariates_are_reported_as_proportions(self) -> None:
+        result = completer_comparison(
+            self.roster(4, 2),
+            self.observations(
+                [
+                    ("sub-000", 2, 70.0, "F"),
+                    ("sub-001", 2, 71.0, "M"),
+                    ("sub-002", 1, 72.0, "F"),
+                    ("sub-003", 1, 73.0, "F"),
+                ]
+            ),
+        )
+
+        assert result["categorical"]["sex"]["completers"] == pytest.approx({"F": 0.5, "M": 0.5})
+        assert result["categorical"]["sex"]["non_completers"] == pytest.approx({"F": 1.0})
+
+    def test_no_dropout_is_stated_rather_than_left_blank(self) -> None:
+        result = completer_comparison(
+            self.roster(2, 2),
+            self.observations([("sub-000", 2, 70.0, "F"), ("sub-001", 2, 71.0, "M")]),
+        )
+
+        assert result["n_non_completers"] == 0
+        assert any("no dropout to compare" in note for note in result["notes"])
+
+    def test_an_absent_roster_is_reported_as_unanswerable(self) -> None:
+        result = completer_comparison(pd.DataFrame(), self.observations([]))
+        assert not result["applicable"]
+        assert "no session roster" in result["reason"]
+
+
+def test_the_funnel_carries_the_completer_comparison(fixture_tree: Path) -> None:
+    report = build_from_tree(fixture_tree)
+    assert "completers" in report.as_dict()

@@ -134,8 +134,13 @@ def test_report_states_the_mar_assumption(run_output: object) -> None:
 
 
 def test_report_declares_the_multiplicity_family(run_output: object) -> None:
+    """§2.5.3: the family is stated numerically, and secondary families are
+    shown as separate from the primary one rather than pooled with it."""
     html = run_output.report_path.read_text(encoding="utf-8")  # type: ignore[attr-defined]
-    assert "primary family size" in html.lower()
+    assert "primary family" in html.lower()
+    assert "28 regional tests" in html
+    assert "secondary families" in html.lower()
+    assert "corrected separately" in html.lower()
 
 
 class TestCLI:

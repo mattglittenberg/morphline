@@ -96,7 +96,14 @@ def run_pipeline(
 
     qc_observations = run_qc(ingested.observations, config.qc, config.analysis, out)
     harmonized = run_harmonize(qc_observations, config.harmonization, out)
-    model_results = run_model(harmonized.observations, config.analysis, out)
+    model_results = run_model(
+        harmonized.observations,
+        config.analysis,
+        out,
+        # The §2.3.1 sensitivity arm: the same specification on the values as
+        # they were before harmonization.
+        unharmonized=qc_observations,
+    )
 
     accounting = build_accounting(
         observations=ingested.observations,

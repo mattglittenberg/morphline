@@ -152,15 +152,32 @@ def model(
     config: ConfigOption,
     observations: Annotated[Path, typer.Option("--observations", help="Harmonized Parquet.")],
     outdir: OutdirOption = Path("results"),
+    unharmonized: Annotated[
+        Path | None,
+        typer.Option(
+            "--unharmonized",
+            help="Pre-harmonization Parquet, adding the §2.3.1 sensitivity arm.",
+        ),
+    ] = None,
 ) -> None:
     """Fit the longitudinal mixed-effects model."""
     cfg = _load(config)
-    results = run_model(read_canonical(observations), cfg.analysis, outdir)
+    results = run_model(
+        read_canonical(observations),
+        cfg.analysis,
+        outdir,
+        unharmonized=read_canonical(unharmonized) if unharmonized else None,
+    )
     typer.echo(
         f"fitted {len(results.fits)} region(s); "
         f"convergence {results.convergence_rate:.0%}; "
         f"{results.n_modeled_observations} modeled observations"
     )
+    if results.sensitivity is not None:
+        typer.echo(
+            f"sensitivity arm: {results.sensitivity.n_sign_flips} sign flip(s), "
+            f"{results.sensitivity.n_significance_changes} significance change(s)"
+        )
 
 
 @app.command()

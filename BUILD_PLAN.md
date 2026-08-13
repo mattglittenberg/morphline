@@ -12,7 +12,7 @@ If a week slips, cut scope, not the date. Cut order is defined in §7.
 
 *Revision 7 (2026-08-12) — the dfsp-spirit deposit's aggregated stats tables are **not** FreeSurfer 6. They carry values bit-identical to ABIDE PCP's FreeSurfer 5.1 output across all 28,976 shared observations. §1.3 and §4 corrected; the cross-check was rebuilt as an exact-equality test and is now done. Scope and ship date unchanged.*
 
-**Status at revision 7:** weeks 1–4 complete. **One** item carries into week 5 — the **§1.2 OpenNeuro audit**, which gates whether week 5 has a longitudinal real-data target.
+**Status at revision 7:** weeks 1–5 complete; week 6 (ship) not started. **One** item still carries — the **§1.2 OpenNeuro audit**, which decides whether v1.0 has a longitudinal *real-data* target. It no longer gates week 5: the longitudinal model is validated against injected truth, which is the validation real data cannot provide (§3.2), so a null audit result costs v1.0 the real-data longitudinal claim and nothing else (§0.3, §5.1).
 
 ---
 
@@ -654,14 +654,16 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 **Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks. **Met.** Two items carry forward: the dfsp-spirit cross-check and the OpenNeuro audit.
 
 ### Week 5 — Longitudinal model
-- [ ] MixedLM per §2.5.1, on the 10–20 region default set.
-- [ ] Baseline eTIV, baseline dx, `age_baseline`/`time` split, convergence reporting.
-- [ ] FDR within the declared primary family; secondary families separate (§2.5.3).
-- [ ] Missing-data accounting by cause + completer/non-completer comparison (§2.5.4).
-- [ ] Slope-recovery tests pass against injected truth.
-- [ ] Harmonized vs unharmonized sensitivity run, **labelled as sensitivity analysis** in the report.
+- [x] MixedLM per §2.5.1, on the 10–20 region default set. **All 28 tests fit**; on `config/test.yaml` 28/28 converge with no random slope dropped, in ~2.5s for the whole pipeline, so the focused region set costs nothing in runtime.
+- [x] Baseline eTIV, baseline dx, `age_baseline`/`time` split, convergence reporting. *Landed with the walking skeleton; the escalating-optimizer and random-intercept-only fallbacks are what make 28/28 convergence real rather than lucky.*
+- [x] FDR within the declared primary family; secondary families separate (§2.5.3). Each of `time`, `dx_baseline`, `age_baseline` is corrected within its own family, never pooled with the primary or with each other, and the report states each family's size. Raw *p* and *q* are reported for every test in every family.
+- [x] Missing-data accounting by cause + completer/non-completer comparison (§2.5.4). Baseline age, eTIV, sex, diagnosis, and site are compared between completers and non-completers, summarised by **standardized mean difference rather than a p-value** — the question is whether the groups differ enough for MAR to be doing real work, not whether the sample is large enough to detect that they do. Subjects with no observations at all are counted separately and never compared: that group is the most likely to be informatively missing, so dropping it silently would bias the check meant to detect bias. A cross-sectional dataset reports the comparison as *not applicable* with the reason stated, rather than emitting an empty table that reads as if it had been checked.
+- [x] Slope-recovery tests pass against injected truth. `TestSlopeRecovery` fits all 28 regions on a clean regime-A fixture (90 subjects × 4 sessions) and bounds the error three ways: **every 95% interval contains the injected slope (28/28)**, worst-case relative error **10.3%** against a declared 20% bound, median **3.1%**, and mean signed error **−0.6%** against a 5% bound on systematic bias. All 28 survive BH-FDR. The target is measured off the recorded `true_biological_value` column by OLS rather than recomputed from the generator's coefficients — re-deriving `base × direction × b_dxtime` would make the test agree with the generator by construction and keep passing if the fixtures encoded ventricular expansion backwards. Two guards keep the suite non-vacuous: the injected effect must exceed 3 standard errors (recovering zero is trivial), and a deliberate 10% scaling of every estimate fails all three criteria.
+- [x] Harmonized vs unharmonized sensitivity run, **labelled as sensitivity analysis** in the report. Both arms fit the same specification; the harmonized arm is primary. The report gives per-region estimates under each arm, direction changes, and significance changes, under a standing statement that agreement between arms is not evidence of correctness. **A run where harmonization changed no values reports the comparison as not applicable** rather than presenting one fit twice — `config/test.yaml` is exactly that case, since both its sites sit below `min_batch_size` by design.
 
-**Exit:** model recovers the injected dx × time interaction within tolerance; sensitivity comparison rendered with correct labelling.
+**Exit:** model recovers the injected dx × time interaction within tolerance; sensitivity comparison rendered with correct labelling. **Met.**
+
+**Measured on `config/confounded.yaml` (regime B):** 28 of 28 regions estimated under both arms, **0 direction changes**, **5 significance changes**. The absence of sign flips is independent support for §2.5.3's choice of the interaction as the primary hypothesis — a scanner step shifts both diagnosis groups alike and largely cancels in the interaction, which is exactly what the `time` main effect does *not* do (revision 5). The five significance changes are the honest cost: for those regions, whether the result clears q≤0.05 is a consequence of the harmonization choice rather than of the data.
 
 ### Week 6 — Ship
 - [ ] README: what/why/how, architecture diagram, Nextflow DAG, quickstart that works from a cold clone, and an honest limitations section covering §2.1, §2.3.1, §2.5.4, and the real-data scope actually achieved.

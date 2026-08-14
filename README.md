@@ -4,8 +4,7 @@
 
 > **Status: past the `v0.1.0` walking skeleton.** Ingestion, data accounting, QC, and ComBat harmonization are implemented and validated; the model still fits a single region. See [Build.md](Build.md) for what lands when.
 
-<!-- Badges: replace OWNER with the GitHub account before the repo goes public. -->
-[![CI](https://github.com/OWNER/morphline/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/morphline/actions/workflows/ci.yml)
+[![CI](https://github.com/mattglittenberg/morphline/actions/workflows/ci.yml/badge.svg)](https://github.com/mattglittenberg/morphline/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

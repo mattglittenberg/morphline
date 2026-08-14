@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/OWNER/morphline/main/nextflow_schema.json",
+  "$id": "https://raw.githubusercontent.com/mattglittenberg/morphline/main/nextflow_schema.json",
   "title": "morphline pipeline parameters",
   "description": "BIDS-aware longitudinal neuroimaging derivatives pipeline",
   "type": "object",

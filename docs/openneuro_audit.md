@@ -11,8 +11,51 @@ derivatives* are not.
 file is the committed record. Regenerate the machine output with:
 
 ```bash
+uv run python scripts/audit_openneuro.py                      # full scan
 uv run python scripts/audit_openneuro.py --check ds007088 ds007089
 ```
+
+---
+
+## Scan coverage
+
+**The index was exhausted — this is a complete scan, not a timeboxed sample.**
+
+| | |
+|---|---|
+| Datasets examined | **1859** |
+| Index exhausted | **yes** |
+| With ≥2 declared sessions and MRI modality | **414** |
+| Of those, shipping any FreeSurfer `.stats` | **51** |
+| Of those, with multi-session stats for ≥2 subjects | **1** |
+
+That last ratio is the finding, and it is stronger than a bare null. **Fifty-one OpenNeuro
+accessions ship FreeSurfer stats; exactly one ships them for more than one session per
+subject** — and that one is ds007088's 8-subject byproduct. The scarcity morphline
+documents as a limitation is measured, not assumed.
+
+Eight accessions came back `truncated` — the whole-prefix fallback walk hit its
+`MAX_KEY_PAGES` cap, which the script reports rather than counting as a negative, because
+"we stopped looking" is not "we found nothing." All eight were resolved by hand with
+delimiter-scoped prefix listings and are genuine negatives:
+
+| Accession | Resolution |
+|---|---|
+| `ds006744`, `ds004624` | no `derivatives/` directory at all |
+| `ds007522` | `excluded_scans/`, `omitted_sessions/` |
+| `ds007272` | `betas/` |
+| `ds007353` | `detailed_events/`, `epochs/`, `preproc/` |
+| `ds004146` | `UNIT1_denoised/`, `mriqc/`, `mrtrix3/`, `visual_qc/` |
+| `ds002814` | `derivatives/` holds heudiconv output; `sourcedata/` is per-subject DICOM |
+| `ds004496` | `fmriprep/` and `ciftify/`, both containing only `sub-*` — no `sourcedata/freesurfer/` |
+
+**No accession is left unresolved.**
+
+One automated verdict needed correcting by hand in the other direction: `ds007089` was
+reported `stats-only` with 111 subjects after hitting the same key cap. A complete
+delimiter listing gives 131 subject directories, none carrying a session entity — which
+confirms the verdict while changing the number, and is how the session-collapse below was
+found.
 
 ---
 

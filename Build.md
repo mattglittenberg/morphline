@@ -15,7 +15,7 @@ Section references (§) point back into BUILD_PLAN.md.
 | Local run path | Python CLI (`morphline run`) | No Docker, Java, or Nextflow on the dev machine; it is arm64 |
 | Docker + Nextflow | Authored now, **verified in CI**, not run locally | §2.6 amd64-first |
 | ComBat | **Implemented in-repo** (week 4), not `neuroHarmonize` | `neuroHarmonize` pins `numpy==1.26.4`, holding the whole project on numpy 1.x |
-| Git | `git init` + commits, no remote | Badges/GHCR use an `OWNER` placeholder to find-and-replace |
+| Git | `git init` + commits, remote at `mattglittenberg/morphline` | Badges/GHCR resolved to the real account; CI derives the image from `github.repository` |
 | CI gates | ruff lint+format, `mypy --strict src/`, pytest, Python e2e, Docker+Nextflow job | |
 | Coverage | Measured and printed, **no** `--cov-fail-under` gate | Badge deferred to week 6 |
 | Real data | None on hand | ABIDE (cross-sectional) / OpenNeuro (longitudinal) are user TODOs below |

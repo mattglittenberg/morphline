@@ -112,7 +112,7 @@ Now that the model fits all 28 regions, synthetic runs lose *nothing* at this bo
 
 `BUILD_PLAN.md` is the spec; `Build.md` is the build order with every open question resolved. Code comments reference BUILD_PLAN sections as `§2.7` — when changing behavior those comments describe, check the section rather than guessing.
 
-`OWNER` is a deliberate placeholder in [README.md](README.md) badges and [nextflow.config](nextflow.config)'s GHCR image; it is find-and-replaced before the repo goes public. There is no git remote yet.
+The `OWNER` placeholder is resolved across all three sites it occupied — [README.md](README.md) badges, [nextflow.config](nextflow.config)'s GHCR image, and [nextflow_schema.json](nextflow_schema.json)'s `$id`. The remote is `github.com/mattglittenberg/morphline` and the image is `ghcr.io/mattglittenberg/morphline`. The repo is named for the package, not for the working directory (`neuroimaging-pipeline`) — CI derives the image from `github.repository`, so the two stay in step only as long as that holds.
 
 ## Environment notes
 

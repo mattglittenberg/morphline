@@ -12,7 +12,9 @@ If a week slips, cut scope, not the date. Cut order is defined in §7.
 
 *Revision 7 (2026-08-12) — the dfsp-spirit deposit's aggregated stats tables are **not** FreeSurfer 6. They carry values bit-identical to ABIDE PCP's FreeSurfer 5.1 output across all 28,976 shared observations. §1.3 and §4 corrected; the cross-check was rebuilt as an exact-equality test and is now done. Scope and ship date unchanged.*
 
-**Status at revision 7:** weeks 1–5 complete; week 6 (ship) not started. **One** item still carries — the **§1.2 OpenNeuro audit**, which decides whether v1.0 has a longitudinal *real-data* target. It no longer gates week 5: the longitudinal model is validated against injected truth, which is the validation real data cannot provide (§3.2), so a null audit result costs v1.0 the real-data longitudinal claim and nothing else (§0.3, §5.1).
+*Revision 8 (2026-08-13) — **the §1.2 audit is run and its answer is no.** The best candidate, Penn LEAD, is a genuinely longitudinal cohort whose public FreeSurfer derivatives are not: 73 of 132 raw subjects have ≥2 sessions, but the 131-subject anatomical deposit holds one session-independent run per subject and the per-session stats exist for only 8. Track B is synthetic-only, which is §0.3's documented outcome. §1.2, §1.3, §4, §6 touched; the evidence is in [docs/openneuro_audit.md](docs/openneuro_audit.md). Scope and ship date unchanged.*
+
+**Status at revision 8:** weeks 1–5 complete, with **no items carrying forward**; week 6 (ship) is the remaining work. The §1.2 audit that carried from week 1 is closed — v1.0 has no longitudinal real-data target, the longitudinal path keeps its injected-truth validation (§3.2), and the README states the gap concretely rather than generically (§0.3, §5.1).
 
 ---
 
@@ -75,6 +77,14 @@ Accept a dataset only if you can locate actual `aseg.stats` / `aparc.stats` text
 
 **This audit is now on the critical path for Track B**, not a nicety — it is the only gate between the pipeline and longitudinal real data. A candidate accession must clear all three: ≥2 structural sessions per subject for a usable number of subjects, locatable FreeSurfer `.stats` files, and enough scanner or site variation to be worth harmonizing. Datasets failing only the third are still worth taking; that just makes them a longitudinal-only target. If nothing clears the first two within the timebox, stop looking and ship synthetic-only — that is the §0.3 outcome, not a failure.
 
+> **Revision 8 — run, and the answer is no.** `scripts/audit_openneuro.py` implements the above against OpenNeuro's GraphQL index and its anonymously-listable S3 bucket rather than `datalad clone`, which needs `git-annex` and minutes per candidate. Full evidence in [docs/openneuro_audit.md](docs/openneuro_audit.md); the verdict and the one lesson worth carrying:
+>
+> The best candidate is **Penn LEAD**, published as three CC0 accessions — raw `ds007116`, fMRIPrep anatomical derivatives `ds007089`, fMRIPrep functional derivatives `ds007088`. The study is genuinely longitudinal: **73 of its 132 raw subjects have ≥2 sessions, 20 have three.** The derivatives are where it dies. `ds007089` carries one FreeSurfer run per subject with no session entity in any of its 131 directory names — its own fMRIPrep invocation passes `--fs-no-resume` against a shared anatomical subjects dir, so those stats are attributable to no single timepoint. Per-session stats exist only in `ds007088`, as an incidental byproduct of session-independent BABS processing, for **8 multi-session subjects**. Metadata is not the constraint — the session tables carry per-session `age` and interval-preserving `acq_time`, and `participants.tsv` carries sex and ten diagnosis columns, so §2.5.1 is fully specified. Sample size is. Eight subjects will not carry random slopes across 28 tests.
+>
+> Criterion three fails outright and separately: one Siemens Prisma_fit 3T, one serial, one console software version, across every sidecar sampled. Not thin variation — none.
+>
+> **The lesson: the automated stages cannot tell you which accession in a family you are looking at.** A filename grep found `aseg.stats` in the *functional* derivatives and reported a candidate; only reading the deposit's README revealed the family, and only counting session entities in directory names revealed that the complete deposit is session-collapsed. Both checks are cheap and neither is scriptable in general. The script's exit text says as much — it prints survivors for a human to judge, and this is what that judgement consists of.
+
 ### 1.3 Two validation tracks, clearly labelled
 
 **Track A — cross-sectional harmonization and parser/integration validation: ABIDE I, from two sources.**
@@ -104,8 +114,10 @@ ABIDE is unaffected by the access problem that removed OASIS-3: neither source c
 
 One caveat to carry into §2.3: ABIDE's diagnosis distribution varies by site, so site effect and case-mix are entangled. Covariate-preserving ComBat is the mitigation, but a residual site effect in ABIDE is not cleanly attributable to the scanner. This is the specific weakness IXI would fix.
 
-**Track B — longitudinal analysis validation: OpenNeuro (preferred), synthetic (guaranteed).**
+**Track B — longitudinal analysis validation: ~~OpenNeuro (preferred)~~ synthetic. The audit found no qualifying accession (§1.2, revision 8).**
 A public OpenNeuro accession with ≥2 structural sessions per subject, selected by the §1.2 audit. OpenNeuro is `datalad clone`-able immediately, mostly CC0, and requires no agreement with anyone — the access risk is replaced by a *fit* risk, which the audit resolves in an afternoon instead of over weeks.
+
+> **Revision 8 — the fit risk was the real one, and it landed.** The audit ran and returned null: the best candidate is longitudinal in its raw data and session-collapsed in its public FreeSurfer derivatives, leaving 8 usable multi-session subjects against a 28-test specification with random slopes. The paragraph below anticipated a *smaller* dataset with *thinner* scanner variation; what it did not anticipate is that an accession can ship complete FreeSurfer derivatives and still not be longitudinal, because the pipeline that produced them ran one anatomical pass per subject. That is now the first thing to check on any future candidate (§1.2). Track B is synthetic-only for v1.0; `ds007116` is the named post-ship target (§6).
 
 The trade is deliberate and it is not free. No single OpenNeuro accession matches OASIS-3's 1378 participants / 2842 sessions across 30 years, and most accessions ship raw images with no FreeSurfer derivatives at all. Expect a smaller dataset, expect fewer sessions per subject, and expect the scanner variation to be thin or absent — a single-site longitudinal accession still validates the longitudinal path, it just cannot exercise the scanner/time confound on real data. Say which of the two it validated; do not let "real longitudinal data" imply both.
 
@@ -610,7 +622,7 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 ## 4. Week-by-week
 
 ### Week 1 — Access, parser, adapters, fixtures
-- [ ] **Day 1:** §1.2 dataset audit run against candidate OpenNeuro accessions — this is the access task now, and it either resolves in an afternoon or Track B is synthetic-only. **Still outstanding as of revision 6, and it is now the gate on week 5**: it decides whether the longitudinal model has a real-data target. A null result is the §0.3 outcome, not a failure, but the answer is needed either way.
+- [x] **Day 1:** §1.2 dataset audit run against candidate OpenNeuro accessions — this is the access task now, and it either resolves in an afternoon or Track B is synthetic-only. **Run at revision 8, late, and the answer is null**: the best candidate (Penn LEAD) is longitudinal in its raw data and session-collapsed in its public derivatives, leaving 8 usable multi-session subjects. Track B is synthetic-only, which is the §0.3 outcome rather than a failure. Evidence in [docs/openneuro_audit.md](docs/openneuro_audit.md); verdict and reasoning in §1.2.
 - [x] Canonical schema defined (§1.5). This is the contract; changing it later is expensive.
 - [x] `FreeSurferStatsParser` — structure only, no dataset knowledge (§1.4).
 - [x] `DatasetAdapter` interface + synthetic adapter.
@@ -648,10 +660,10 @@ Synthetic recovery cannot prove the parser handles real headers. Real-data integ
 - [x] Batch-effect recovery, biological preservation, and non-attenuation tests on fixtures (§2.3.2). On `recovery.yaml`: γ recovery *r* = 0.998 with worst-case error 7.6% of the true effect spread, site R² 0.62 → 0.0001, slopes unchanged to within 1%.
 - [x] Regime B (confounded) test — **asserting the measured behavior, which is not the predicted attenuation.** See the revision 5 correction in §2.3.2.
 - [x] Real-data sanity checks per §5.2.
-- [ ] If the §1.2 audit found a qualifying OpenNeuro accession: OpenNeuro adapter. **Blocked on the audit, which has not been run.**
+- [x] If the §1.2 audit found a qualifying OpenNeuro accession: OpenNeuro adapter. **Not built, because the audit found none** (§1.2, revision 8). Closed as answered rather than left open: the conditional was not met, so there is nothing here to carry.
 - [x] *Added in revision 6, not in the original plan:* cross-check the in-repo ComBat against `neuroCombat` behind an optional extra (Build.md deviation 1's promise). It matches to 1e-6 on adjusted values, γ*, and δ* — and it found a real defect in the estimator's shrinkage axis that no internal test could have caught.
 
-**Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks. **Met.** Two items carry forward: the dfsp-spirit cross-check and the OpenNeuro audit.
+**Exit:** all four harmonization criteria pass on fixtures; ABIDE run passes §5.2 checks. **Met.** Both items that carried forward are now closed — the dfsp-spirit cross-check at revision 7, the OpenNeuro audit at revision 8.
 
 ### Week 5 — Longitudinal model
 - [x] MixedLM per §2.5.1, on the 10–20 region default set. **All 28 tests fit**; on `config/test.yaml` 28/28 converge with no random slope dropped, in ~2.5s for the whole pipeline, so the focused region set costs nothing in runtime.
@@ -715,7 +727,7 @@ This is not a limitation — the synthetic report is arguably the better demo. I
 ## 6. Post-ship roadmap (the public commit history)
 
 - Longitudinal ComBat implementation (Python port of Beer et al. 2020) — the headline
-- Longitudinal real-data integration, if no qualifying OpenNeuro accession made v1.0
+- **Longitudinal real-data integration via Penn LEAD `ds007116`** — the concrete target the §1.2 audit produced, replacing the generic "if no accession made v1.0" placeholder. 73 of 132 subjects have ≥2 sessions and 20 have three; CC0; per-session `age` and interval-preserving `acq_time` in the session tables; sex and ten diagnosis columns in `participants.tsv`. The cost is the reason it is not in v1.0: the public derivatives are session-collapsed (§1.2, revision 8), so this needs a FreeSurfer derivation run over ~73 subjects' repeat sessions. Single-scanner, so it would validate the longitudinal path and **not** the scanner/time confound — state which, per §1.3
 - IXI adapter with a FreeSurfer derivation run — the clean three-scanner harmonization story, once ~600 × `recon-all` is affordable off the critical path
 - OASIS-3, if institutional affiliation ever makes the registration possible — still the best single longitudinal multi-scanner source, just not obtainable by an individual
 - Whole-region mode promoted from flag to fully supported, with its own multiplicity treatment
@@ -746,7 +758,7 @@ Note that region coverage is no longer a cut item — 10–20 regions is the v1 
 
 | Risk | Mitigation |
 |---|---|
-| No OpenNeuro accession clears the §1.2 audit | Not on critical path (§0.3); synthetic validates the longitudinal path; ABIDE covers real-data integration. Timebox the search to 4 hours and accept the synthetic-only outcome |
+| No OpenNeuro accession clears the §1.2 audit | Not on critical path (§0.3); synthetic validates the longitudinal path; ABIDE covers real-data integration. Timebox the search to 4 hours and accept the synthetic-only outcome. **Realized: the audit returned null, and the mitigation held — v1.0 ships synthetic-only with a specific gap named rather than a generic one (§1.2, revision 8)** |
 | Chosen OpenNeuro accession is single-site or small | Expected, not a surprise (§1.3). It validates the longitudinal path but not the scanner/time confound; report which one and never imply both |
 | IXI derivatives never materialize | IXI is a stretch by construction; ABIDE is Track A regardless. Never let ~600 × `recon-all` onto the 6-week path |
 | Real stats files break the parser | Week 4 buffer; property-based tests; version-tolerant parsing from day 1; reason-coded parse failures. **Realized: six defects total, all fixed. The buffer was needed** |

@@ -11,9 +11,11 @@ htmlcov/
 dist/
 build/
 
-# pipeline outputs
+# pipeline outputs. `results-nf/` is CI's --outdir and is also where downloaded
+# run artifacts land; what belongs in the repo is copied into docs/ deliberately.
 work/
 results/
+results-nf/
 .nextflow/
 .nextflow.log*
 

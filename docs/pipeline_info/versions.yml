@@ -1,14 +1,14 @@
-"REPORT":
-    morphline: 0.1.0
-"MODEL":
+"PARSE_SUBJECT":
     morphline: 0.1.0
 "ACCOUNTING":
+    morphline: 0.1.0
+"HARMONIZE":
+    morphline: 0.1.0
+"REPORT":
     morphline: 0.1.0
 "QC":
     morphline: 0.1.0
 "COLLECT_CANONICAL":
     morphline: 0.1.0
-"HARMONIZE":
-    morphline: 0.1.0
-"PARSE_SUBJECT":
+"MODEL":
     morphline: 0.1.0

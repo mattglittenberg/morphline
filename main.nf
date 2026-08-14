@@ -88,9 +88,12 @@ workflow {
 
     REPORT(
         ACCOUNTING.out.funnel,
+        ACCOUNTING.out.json,
         QC.out.parquet,
         HARMONIZE.out.parquet,
+        HARMONIZE.out.json,
         MODEL.out.parquet,
+        MODEL.out.json,
         ch_config,
         ch_dataset,
     )

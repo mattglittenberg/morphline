@@ -140,11 +140,10 @@ jobs:
   nf:
     name: nextflow (docker)
     runs-on: ubuntu-latest
-    # Not gating merges yet: the container and workflow paths cannot be
-    # verified on the arm64 development machine, so this job is the first
-    # place they run at all. It is promoted to blocking once it has proven
-    # stable, per Build.md step 10.
-    continue-on-error: true
+    # Blocking, per Build.md step 10. It ran non-gating for exactly as long as
+    # it took to prove: three consecutive runs reported CI green while the
+    # image could not build and the pipeline could not compile. A job nobody
+    # has to pass is a badge that means nothing.
     steps:
       - uses: actions/checkout@v4
 

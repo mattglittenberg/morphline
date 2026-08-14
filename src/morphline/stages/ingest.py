@@ -145,6 +145,30 @@ def merge_counters(paths: Iterable[Path | str]) -> dict[str, Any]:
     return totals
 
 
+def merge_versions(paths: Iterable[Path | str]) -> dict[str, list[str]]:
+    """Union observed-version sidecars written by a fanned-out staged run.
+
+    The counterpart to :func:`merge_counters` for the provenance sidecar, and
+    deliberately a union rather than a sum: versions are a set observed across
+    the dataset, so two subjects produced by one FreeSurfer release must not
+    report that release twice.
+
+    Args:
+        paths: Version sidecar paths. Missing files are skipped.
+
+    Returns:
+        Each key's values unioned across every sidecar found, sorted.
+    """
+    merged: dict[str, set[str]] = {}
+    for path in paths:
+        source = Path(path)
+        if not source.is_file():
+            continue
+        for key, values in json.loads(source.read_text(encoding="utf-8")).items():
+            merged.setdefault(key, set()).update(values)
+    return {key: sorted(values) for key, values in merged.items()}
+
+
 def ingest(adapter: DatasetAdapter) -> IngestResult:
     """Parse every file an adapter discovers into canonical observations.
 

@@ -13,10 +13,15 @@ process PARSE_SUBJECT {
     path config
     path dataset
 
+    // Every artifact is subject-prefixed, sidecars included. The gather step
+    // stages all of them into one directory, where an unprefixed
+    // ingest_counters.json from 16 subjects is 16 collisions on one name.
     output:
-    tuple val(subject_id), path("${subject_id}.observations.parquet")   , emit: parquet
-    tuple val(subject_id), path("${subject_id}.parse_failures.parquet") , emit: failures
-    tuple val(subject_id), path('versions.yml')                         , emit: versions
+    tuple val(subject_id), path("${subject_id}.observations.parquet")    , emit: parquet
+    tuple val(subject_id), path("${subject_id}.parse_failures.parquet")  , emit: failures
+    tuple val(subject_id), path("${subject_id}.ingest_counters.json")    , emit: counters
+    tuple val(subject_id), path("${subject_id}.ingest_versions.json")    , emit: observed_versions
+    tuple val(subject_id), path('versions.yml')                          , emit: versions
 
     script:
     """
@@ -28,6 +33,8 @@ process PARSE_SUBJECT {
 
     mv observations.parquet   ${subject_id}.observations.parquet
     mv parse_failures.parquet ${subject_id}.parse_failures.parquet
+    mv ingest_counters.json   ${subject_id}.ingest_counters.json
+    mv ingest_versions.json   ${subject_id}.ingest_versions.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

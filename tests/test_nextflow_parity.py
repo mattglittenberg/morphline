@@ -258,3 +258,80 @@ def test_account_exits_nonzero_when_the_funnel_does_not_reconcile(tmp_path: Path
     )
     assert result.returncode == 1
     assert "does not reconcile" in result.stderr
+
+
+def test_collect_gathers_sidecars_staged_into_one_directory(tmp_path: Path) -> None:
+    """Ingest sidecars must survive Nextflow's flat staging, not just this harness's layout.
+
+    Every other test here gives each subject its own directory, which is what
+    ``morphline collect`` assumes when it derives sidecar paths from its inputs'
+    parents. Nextflow does the opposite: it stages every per-subject Parquet
+    into *one* work directory, collapsing that derivation onto a single file —
+    so the funnel would be built from one subject's counters and the whole
+    dataset's rows, and provenance would report a subset of the observed
+    versions. Neither failure raises; on clean inputs the funnel still
+    reconciles, which is why this needs asserting rather than watching.
+    """
+    cfg = str(CONFIG)
+    fixtures = tmp_path / "fixtures"
+    morphline("fixtures", "generate", "--config", cfg, "--outdir", str(fixtures))
+
+    subjects = sorted(p.name for p in (fixtures / "derivatives" / "freesurfer").iterdir())[:3]
+    assert len(subjects) >= 2, "need at least two subjects for a merge to be distinguishable"
+
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    per_subject_counters = []
+    for subject in subjects:
+        own = tmp_path / "sub" / subject
+        morphline(
+            "ingest",
+            "--config",
+            cfg,
+            "--indir",
+            str(fixtures),
+            "--subject",
+            subject,
+            "--outdir",
+            str(own),
+        )
+        # Exactly what PARSE_SUBJECT does: subject-prefix every artifact, then
+        # let the gather step stage them side by side.
+        for name in ("observations.parquet", "ingest_counters.json", "ingest_versions.json"):
+            (flat / f"{subject}.{name}").write_bytes((own / name).read_bytes())
+        per_subject_counters.append(json.loads((own / "ingest_counters.json").read_text()))
+
+    expected_files = sum(c["files_discovered"] for c in per_subject_counters)
+
+    sidecar_args: list[str] = []
+    for subject in subjects:
+        sidecar_args += ["--counters", str(flat / f"{subject}.ingest_counters.json")]
+        sidecar_args += ["--versions", str(flat / f"{subject}.ingest_versions.json")]
+
+    out = tmp_path / "gathered"
+    morphline(
+        "collect",
+        *(str(flat / f"{s}.observations.parquet") for s in subjects),
+        *sidecar_args,
+        "--outdir",
+        str(out),
+    )
+
+    merged = json.loads((out / "ingest_counters.json").read_text())
+    assert merged["files_discovered"] == expected_files
+
+    observed = json.loads((out / "ingest_versions.json").read_text())
+    assert set(observed) == {"freesurfer_versions", "freesurfer_version_declarations"}
+
+    # Non-vacuity: without the explicit paths the flat layout resolves every
+    # input's parent to this one directory, where no bare `ingest_counters.json`
+    # exists. A merge that still reported the full total would mean the flags
+    # were doing nothing and this test proved nothing.
+    bare = tmp_path / "derived"
+    morphline(
+        "collect",
+        *(str(flat / f"{s}.observations.parquet") for s in subjects),
+        "--outdir",
+        str(bare),
+    )
+    assert not (bare / "ingest_counters.json").exists()

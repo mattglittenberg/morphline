@@ -392,27 +392,51 @@ def provenance(
 def collect(
     inputs: Annotated[list[Path], typer.Argument(help="Canonical Parquet files to merge.")],
     outdir: OutdirOption = Path("results"),
+    counters: Annotated[
+        list[Path] | None,
+        typer.Option("--counters", help="Ingest counter sidecars, when not beside the inputs."),
+    ] = None,
+    versions: Annotated[
+        list[Path] | None,
+        typer.Option("--versions", help="Ingest version sidecars, when not beside the inputs."),
+    ] = None,
 ) -> None:
     """Concatenate canonical Parquet files into one.
 
     This is the gather step Nextflow calls after ``collect()``-ing per-subject
     paths. The channel carries paths; the reading happens here, inside the
     consuming process.
+
+    ``--counters`` and ``--versions`` exist because sidecar locations cannot be
+    derived from the inputs under Nextflow: it stages every per-subject Parquet
+    into *one* work directory, so every input shares a parent and the derived
+    path resolves to a single file instead of one per subject. Omitted, they
+    fall back to that derivation, which is correct when each input sits in its
+    own directory.
     """
     from morphline.schema import write_canonical
-    from morphline.stages.ingest import merge_counters
+    from morphline.stages.ingest import merge_counters, merge_versions
 
     merged = read_canonical_many(list(inputs))
     outdir.mkdir(parents=True, exist_ok=True)
     path = write_canonical(merged, outdir / "observations.parquet")
 
-    # The counter sidecars fan out with the observations and must be gathered
-    # with them, or the accounting stage reconciles a funnel built from one
-    # subject's counters and the whole dataset's rows.
-    counters = merge_counters(Path(p).parent / "ingest_counters.json" for p in inputs)
-    if counters:
+    # Both sidecars fan out with the observations and must be gathered with
+    # them, or the accounting stage reconciles a funnel built from one
+    # subject's counters and the whole dataset's rows, and provenance reports
+    # no observed versions at all.
+    counter_paths = counters or [Path(p).parent / "ingest_counters.json" for p in inputs]
+    version_paths = versions or [Path(p).parent / "ingest_versions.json" for p in inputs]
+
+    gathered = merge_counters(counter_paths)
+    if gathered:
         (outdir / "ingest_counters.json").write_text(
-            json.dumps(counters, indent=2), encoding="utf-8"
+            json.dumps(gathered, indent=2), encoding="utf-8"
+        )
+    observed = merge_versions(version_paths)
+    if observed:
+        (outdir / "ingest_versions.json").write_text(
+            json.dumps(observed, indent=2), encoding="utf-8"
         )
     typer.echo(f"merged {len(inputs)} files into {path} ({len(merged)} observations)")
 

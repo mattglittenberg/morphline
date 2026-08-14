@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>morphline — synthetic test run</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d21; --muted: #5c6470; --line: #dfe3e8;
+    --panel: #f7f8fa; --accent: #2b5c8a; --warn: #8a5a00; --warn-bg: #fff6e0;
+    --bad: #9b2226; --bad-bg: #fdeced; --ok: #1f6f43; --ok-bg: #e8f5ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a; --fg: #e6e9ed; --muted: #9aa4b0; --line: #2b3138;
+      --panel: #1c2025; --accent: #7fb2e0; --warn: #e5b567; --warn-bg: #33290f;
+      --bad: #e88a8d; --bad-bg: #3a1d1f; --ok: #7dcfa0; --ok-bg: #16301f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .25rem; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 1.15rem; margin: 2.75rem 0 .75rem; padding-bottom: .4rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: .95rem; margin: 1.5rem 0 .5rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .05em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .875rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem;
+       text-transform: uppercase; letter-spacing: .04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; padding: 1rem 1.15rem; margin: 1rem 0; }
+  .kv { display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: .3rem 1.25rem; }
+  .kv dt { color: var(--muted); font-size: .85rem; }
+  .kv dd { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .82rem;
+           word-break: break-all; }
+  .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+           font-size: .75rem; font-weight: 600; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  .callout { border-left: 3px solid var(--accent); padding: .6rem .9rem;
+             background: var(--panel); margin: .75rem 0; font-size: .9rem; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .callout.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+  .funnel-bar { height: 1.35rem; background: var(--accent); border-radius: 3px; min-width: 2px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+        padding: .9rem; overflow-x: auto; font-size: .78rem; line-height: 1.45; }
+  ul.tight { margin: .4rem 0; padding-left: 1.2rem; }
+  ul.tight li { margin: .25rem 0; }
+  .lim { margin: .9rem 0; }
+  .lim strong { display: block; margin-bottom: .15rem; }
+  .lim p { margin: 0; color: var(--muted); font-size: .9rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>morphline — synthetic test run</h1>
+  <p class="sub">
+    morphline 0.1.0 &middot;
+    synthetic-v1 (0.1.0) &middot;
+    2026-08-14T22:58:18.063270+00:00
+  </p>
+
+  <h2>1. Provenance</h2>
+  <div class="panel">
+    <dl class="kv">
+      <dt>pipeline_version</dt><dd>0.1.0</dd>
+      <dt>git_sha</dt>
+      <dd>
+        unavailable
+      </dd>
+      <dt>container_image</dt><dd>not containerised</dd>
+      <dt>container_digest</dt><dd>n/a</dd>
+      <dt>python_version</dt><dd>3.12.14</dd>
+      <dt>platform</dt><dd>Linux x86_64</dd>
+      <dt>nextflow_version</dt><dd>not run under Nextflow</dd>
+      <dt>parser_version</dt><dd>1.0.0</dd>
+      <dt>freesurfer_version(s)</dt>
+      <dd>5.3.0, 6.0.0, 7.2.0</dd>
+      <dt>dataset</dt><dd>synthetic-v1 / 0.1.0</dd>
+      <dt>input_path</dt><dd>generated fixtures</dd>
+      <dt>random_seed(s)</dt>
+      <dd>
+fixtures=20260800       </dd>
+      <dt>duration_seconds</dt>
+      <dd>n/a</dd>
+    </dl>
+    <h3>Fully resolved configuration</h3>
+    <pre>{
+  "dataset": {
+    "name": "synthetic-v1",
+    "version": "0.1.0",
+    "adapter": "synthetic",
+    "path": null,
+    "phenotypic_csv": null,
+    "collapse_site_subsample": false
+  },
+  "fixtures": {
+    "seed": 20260800,
+    "regime": "A",
+    "n_sessions": 3,
+    "session_interval_years": 1.0,
+    "patient_fraction": 0.5,
+    "baseline_age_mean": 70.0,
+    "baseline_age_sd": 7.0,
+    "etiv_mean": 1500000.0,
+    "etiv_sd": 150000.0,
+    "sites": [
+      {
+        "name": "site-a",
+        "scanner_manufacturer": "Siemens",
+        "scanner_model": "Prisma",
+        "field_strength_tesla": 3.0,
+        "n_subjects": 8,
+        "additive_effect": 0.02,
+        "multiplicative_effect": 1.03
+      },
+      {
+        "name": "site-b",
+        "scanner_manufacturer": "GE",
+        "scanner_model": "Discovery-MR750",
+        "field_strength_tesla": 3.0,
+        "n_subjects": 8,
+        "additive_effect": -0.03,
+        "multiplicative_effect": 0.97
+      }
+    ],
+    "effects": {
+      "age_per_decade": -0.015,
+      "dx_baseline": -0.03,
+      "time_per_year": -0.005,
+      "dx_by_time_per_year": -0.015,
+      "sex_effect": 0.0,
+      "random_intercept_sd": 0.04,
+      "random_slope_sd": 0.004,
+      "noise_sd": 0.02
+    },
+    "planted": {
+      "qc_high_holes_fraction": 0.1,
+      "qc_bad_etiv_fraction": 0.06,
+      "qc_extreme_change_fraction": 0.06,
+      "missing_acquisition_fraction": 0.1,
+      "missing_derivative_fraction": 0.08,
+      "malformed_file_fraction": 0.08
+    },
+    "freesurfer_version_mix": {
+      "5.3.0": 0.2,
+      "6.0.0": 0.5,
+      "7.2.0": 0.3
+    }
+  },
+  "qc": {
+    "enabled": true,
+    "thresholds": {
+      "euler_min": -200.0,
+      "euler_mad_z": 4.0,
+      "etiv_min": 1000000.0,
+      "etiv_max": 2100000.0,
+      "outlier_mad_z": 4.0,
+      "asymmetry_mad_z": 4.0,
+      "annual_change_warn_pct": 8.0,
+      "annual_change_fail_pct": 25.0,
+      "min_interval_years": 0.5
+    },
+    "target_recall": 0.95,
+    "target_false_positive_rate": 0.05,
+    "target_precision": 0.8
+  },
+  "harmonization": {
+    "enabled": true,
+    "batch_column": "site",
+    "covariates": [
+      "age_baseline",
+      "sex",
+      "dx_baseline",
+      "time_from_baseline_years"
+    ],
+    "min_batch_size": 20,
+    "small_batch_policy": "report_and_exclude",
+    "empirical_bayes": true,
+    "eb_tolerance": 0.0001,
+    "eb_max_iterations": 100,
+    "estimation_set": "analysis_included",
+    "target_batch_recovery_tolerance": 0.15,
+    "target_biological_preservation_tolerance": 0.35,
+    "target_site_association_reduction": 0.5,
+    "target_slope_attenuation_max": 0.25
+  },
+  "analysis": {
+    "include_qc_status": [
+      "PASS"
+    ],
+    "sensitivity_include": [
+      "PASS",
+      "WARNING"
+    ],
+    "region_set": "v1",
+    "fdr_alpha": 0.05
+  },
+  "report": {
+    "title": "morphline \u2014 synthetic test run",
+    "inline_assets": true
+  }
+}</pre>
+  </div>
+
+  <h2>2. Data accounting funnel</h2>
+
+  <div class="callout">
+    <span class="badge ok">reconciles exactly</span>
+    Every drop below has a stated cause.
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Boundary</th><th>Unit</th><th class="num">Count</th>
+        <th class="num">Lost</th><th>Causes</th><th style="width:22%">&nbsp;</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>expected sessions</td>
+        <td>sessions</td>
+        <td class="num">48</td>
+        <td class="num">
+0        </td>
+        <td>—</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 4.181184668989547%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>discovered sessions</td>
+        <td>sessions</td>
+        <td class="num">46</td>
+        <td class="num">
+<span class="badge warn">2</span>        </td>
+        <td>missing_acquisition=2</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 4.006968641114983%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>parsed files</td>
+        <td>files</td>
+        <td class="num">124</td>
+        <td class="num">
+<span class="badge warn">2</span>        </td>
+        <td>EMPTY_FILE=1; TRUNCATED_ROW=1</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 10.801393728222996%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>sessions with observations</td>
+        <td>sessions</td>
+        <td class="num">42</td>
+        <td class="num">
+<span class="badge warn">4</span>        </td>
+        <td>missing_derivative=4</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 3.658536585365854%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>canonical observations</td>
+        <td>observations</td>
+        <td class="num">1148</td>
+        <td class="num">
+0        </td>
+        <td>—</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 100.0%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>QC-passing observations</td>
+        <td>observations</td>
+        <td class="num">996</td>
+        <td class="num">
+<span class="badge warn">152</span>        </td>
+        <td>excluded_qc=152</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 86.7595818815331%"></div>
+        </td>
+      </tr>
+      <tr>
+        <td>modeled observations</td>
+        <td>observations</td>
+        <td class="num">996</td>
+        <td class="num">
+0        </td>
+        <td>—</td>
+        <td>
+          <div class="funnel-bar"
+               style="width: 86.7595818815331%"></div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Parse failures by reason code</h3>
+  <table>
+    <thead><tr><th>Reason code</th><th class="num">Files</th></tr></thead>
+    <tbody>
+      <tr><td>TRUNCATED_ROW</td><td class="num">1</td></tr>
+      <tr><td>EMPTY_FILE</td><td class="num">1</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Missingness by cause</h3>
+  <table>
+    <thead><tr><th>Cause</th><th class="num">Sessions</th></tr></thead>
+    <tbody>
+      <tr><td>missing_derivative</td><td class="num">4</td></tr>
+      <tr><td>missing_acquisition</td><td class="num">2</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Completers vs non-completers</h3>
+  <p class="sub">
+    A completer produced observations for every session the dataset expects of that subject; a non-completer produced at least one but not all. The MAR assumption behind the
+    longitudinal estimates is weakest where dropout is caused by the process
+    being studied, so baseline differences between these groups are reported
+    rather than assumed away (§2.5.4). Standardized mean differences are given
+    instead of p-values: the question is whether the groups differ enough to
+    matter, not whether the sample is large enough to detect that they do.
+  </p>
+
+  <dl class="kv">
+    <dt>completers</dt><dd>10 subjects</dd>
+    <dt>non-completers</dt><dd>6 subjects</dd>
+    <dt>no baseline data</dt>
+    <dd>0 subjects, not comparable</dd>
+  </dl>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Baseline covariate</th>
+        <th class="num">Completers</th><th class="num">Non-completers</th>
+        <th class="num">SMD</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>age_baseline</code></td>
+        <td class="num">
+          66.2 &plusmn; 8.4
+          (n=10)
+        </td>
+        <td class="num">
+          66.5 &plusmn; 6.9
+          (n=6)
+        </td>
+        <td class="num">
+-0.05        </td>
+      </tr>
+      <tr>
+        <td><code>etiv_baseline</code></td>
+        <td class="num">
+          1503552.5 &plusmn; 176933.0
+          (n=10)
+        </td>
+        <td class="num">
+          1543773.7 &plusmn; 169650.0
+          (n=6)
+        </td>
+        <td class="num">
+          <span class="badge bad">-0.23</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Baseline covariate</th><th>Completers</th><th>Non-completers</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>sex</code></td>
+        <td>
+          F 50%,           M 50%        </td>
+        <td>
+          F 67%,           M 33%        </td>
+      </tr>
+      <tr>
+        <td><code>dx_baseline</code></td>
+        <td>
+          patient 70%,           control 30%        </td>
+        <td>
+          patient 67%,           control 33%        </td>
+      </tr>
+      <tr>
+        <td><code>site</code></td>
+        <td>
+          site-b 60%,           site-a 40%        </td>
+        <td>
+          site-a 67%,           site-b 33%        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <ul class="tight">
+<li>Completers and non-completers differ at baseline on etiv_baseline (SMD -0.23). A standardized difference of 0.1 or more is the conventional threshold for imbalance worth reporting, and it weakens the MAR assumption the longitudinal estimates rest on (§2.5.4).</li>    </ul>
+  </div>
+
+  <h3>Metadata coverage</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Field</th><th>Distribution</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>site</td>
+        <td>
+site-b: 602 &middot; site-a: 546        </td>
+      </tr>
+      <tr>
+        <td>scanner_manufacturer</td>
+        <td>
+GE: 602 &middot; Siemens: 546        </td>
+      </tr>
+      <tr>
+        <td>scanner_model</td>
+        <td>
+Discovery-MR750: 602 &middot; Prisma: 546        </td>
+      </tr>
+      <tr>
+        <td>field_strength_tesla</td>
+        <td>
+3.0: 1148        </td>
+      </tr>
+      <tr>
+        <td>freesurfer_version</td>
+        <td>
+6.0.0: 700 &middot; 7.2.0: 322 &middot; 5.3.0: 126        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Batch sizes</h3>
+  <table>
+    <thead><tr><th>Site</th><th class="num">Subjects</th><th class="num">Observations</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>site-a</td>
+        <td class="num">8</td>
+        <td class="num">546</td>
+      </tr>
+      <tr>
+        <td>site-b</td>
+        <td class="num">8</td>
+        <td class="num">602</td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <h2>3. Quality control</h2>
+  <div class="callout">
+    QC <strong>classifies</strong>; the analysis layer <strong>decides</strong>.
+    <code>qc_status</code> is three-level and separate from
+    <code>analysis_included</code>, which comes from an explicit configured
+    policy — so review-worthy observations stay visible instead of vanishing
+    into an exclusion list. No check here can distinguish segmentation failure
+    from biology, and none of them claims to.
+  </div>
+  <table>
+    <thead><tr><th>Status</th><th class="num">Observations</th></tr></thead>
+    <tbody>
+      <tr><td>PASS</td><td class="num">996</td></tr>
+      <tr><td>WARNING</td><td class="num">152</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Harmonization diagnostics</h2>
+
+  <div class="callout ">
+    <strong>Scanner &times; time confounding: none.</strong>
+    Site explains 0% of the variance in time from baseline. Sites contribute across the time range, so harmonization is on firm ground.
+  </div>
+  <dl class="kv">
+    <dt>site explains var(time)</dt><dd>0.000</dd>
+    <dt>site/time correlation</dt><dd>-0.002</dd>
+    <dt>longitudinal estimates</dt>
+    <dd>
+        <span class="badge ok">interpretable with stated caveats</span>
+    </dd>
+  </dl>
+
+  <h3>Site &times; time-from-baseline crosstab</h3>
+  <div class="scroll"><table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>(-0.0021, 0.525]</th>
+      <th>(0.525, 1.049]</th>
+      <th>(1.049, 1.574]</th>
+      <th>(1.574, 2.099]</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>site-a</th>
+      <td>224</td>
+      <td>84</td>
+      <td>56</td>
+      <td>182</td>
+    </tr>
+    <tr>
+      <th>site-b</th>
+      <td>224</td>
+      <td>112</td>
+      <td>84</td>
+      <td>182</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h3>Batches below min_batch_size</h3>
+  <p class="sub">
+    Reported, never silently dropped. The threshold is a conservative
+    engineering default for stability, not a methodological law — adequacy
+    depends on the number of batches, covariate balance within batch, outcome
+    variance, and the magnitude of the batch effect relative to it.
+  </p>
+  <table>
+    <thead><tr>
+      <th>Batch</th><th class="num">Subjects</th><th class="num">Observations</th>
+      <th>Sex</th><th>Diagnosis</th><th class="num">Age (mean)</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>site-a</td>
+        <td class="num">8</td>
+        <td class="num">546</td>
+        <td>F&nbsp;5 M&nbsp;3 </td>
+        <td>patient&nbsp;6 control&nbsp;2 </td>
+        <td class="num">
+          67.7
+        </td>
+      </tr>
+      <tr>
+        <td>site-b</td>
+        <td class="num">8</td>
+        <td class="num">602</td>
+        <td>M&nbsp;4 F&nbsp;4 </td>
+        <td>patient&nbsp;5 control&nbsp;3 </td>
+        <td class="num">
+          64.9
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+
+
+
+  <div class="callout">
+    <ul class="tight">
+<li>Site explains 0% of the variance in time from baseline. Sites contribute across the time range, so harmonization is on firm ground.</li><li>Batches below min_batch_size=20: site-a (n=8), site-b (n=8). Policy: report_and_exclude. Reported, not silently dropped.</li><li>Excluded from harmonization, not from the dataset: these rows stay in the output carrying their original values. Dropping them here would reappear at the modeling boundary under a cause that is false, which is worse than not reconciling because it looks like an answer.</li><li>After applying the report_and_exclude policy, fewer than two batches remain estimable, so there is no batch contrast left and nothing was harmonized. This is the policy working as configured, not a failure: with every batch below min_batch_size=20 there is no subset of the data large enough to estimate a batch effect from.</li>    </ul>
+  </div>
+
+  <h2>5. Model results</h2>
+  <div class="callout warn">
+    <strong>Sensitivity analysis, not validated biological inference.</strong>
+    Harmonized and unharmonized estimates show how conclusions depend on the
+    harmonization assumption; they do not establish which is correct.
+  </div>
+
+  <dl class="kv">
+    <dt>specification</dt>
+    <dd>value ~ age_baseline + time + dx_baseline + time:dx_baseline + sex + etiv_baseline</dd>
+    <dt>random effects</dt><dd>intercept + slope on time, grouped by subject_id</dd>
+    <dt>primary family</dt>
+    <dd>
+      <code>time:dx_baseline[T.patient]</code> across 28 regional
+      tests (14 structures &times; 2 hemispheres); 28
+      carried a p-value and were corrected
+    </dd>
+    <dt>FDR alpha</dt><dd>0.05, applied within each family separately</dd>
+    <dt>convergence rate</dt><dd>100%</dd>
+    <dt>modeled observations</dt><dd>996</dd>
+  </dl>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th><th>Measure</th><th class="num">N obs</th><th class="num">N subj</th>
+        <th>Converged</th><th class="num">Estimate</th><th class="num">SE</th>
+        <th class="num">p</th><th class="num">q</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>lh-hippocampus</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-92.7836</td>
+        <td class="num">36.0233</td>
+        <td class="num">0.01001</td>
+        <td class="num">0.04002</td>
+      </tr>
+      <tr>
+        <td>rh-hippocampus</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-76.6452</td>
+        <td class="num">42.6359</td>
+        <td class="num">0.07223</td>
+        <td class="num">0.1445</td>
+      </tr>
+      <tr>
+        <td>lh-amygdala</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-23.2371</td>
+        <td class="num">21.4883</td>
+        <td class="num">0.2795</td>
+        <td class="num">0.3606</td>
+      </tr>
+      <tr>
+        <td>rh-amygdala</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-52.6362</td>
+        <td class="num">17.5049</td>
+        <td class="num">0.002639</td>
+        <td class="num">0.01478</td>
+      </tr>
+      <tr>
+        <td>lh-thalamus</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-183.1485</td>
+        <td class="num">99.9166</td>
+        <td class="num">0.0668</td>
+        <td class="num">0.1439</td>
+      </tr>
+      <tr>
+        <td>rh-thalamus</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-115.9713</td>
+        <td class="num">53.6308</td>
+        <td class="num">0.03059</td>
+        <td class="num">0.08564</td>
+      </tr>
+      <tr>
+        <td>lh-caudate</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-96.3417</td>
+        <td class="num">40.1824</td>
+        <td class="num">0.0165</td>
+        <td class="num">0.05776</td>
+      </tr>
+      <tr>
+        <td>rh-caudate</td>
+        <td>volume</td>
+        <td class="num">36</td>
+        <td class="num">16</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-80.1276</td>
+        <td class="num">39.8645</td>
+        <td class="num">0.04443</td>
+        <td class="num">0.1037</td>
+      </tr>
+      <tr>
+        <td>lh-putamen</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-41.6309</td>
+        <td class="num">42.0505</td>
+        <td class="num">0.3222</td>
+        <td class="num">0.3759</td>
+      </tr>
+      <tr>
+        <td>rh-putamen</td>
+        <td>volume</td>
+        <td class="num">35</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-53.2833</td>
+        <td class="num">53.5747</td>
+        <td class="num">0.32</td>
+        <td class="num">0.3759</td>
+      </tr>
+      <tr>
+        <td>lh-lateral-ventricle</td>
+        <td>volume</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">374.2878</td>
+        <td class="num">114.3366</td>
+        <td class="num">0.001062</td>
+        <td class="num">0.007434</td>
+      </tr>
+      <tr>
+        <td>rh-lateral-ventricle</td>
+        <td>volume</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">122.0575</td>
+        <td class="num">131.6043</td>
+        <td class="num">0.3537</td>
+        <td class="num">0.3961</td>
+      </tr>
+      <tr>
+        <td>lh-inferior-lateral-ventricle</td>
+        <td>volume</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">10.7682</td>
+        <td class="num">7.3166</td>
+        <td class="num">0.1411</td>
+        <td class="num">0.2469</td>
+      </tr>
+      <tr>
+        <td>rh-inferior-lateral-ventricle</td>
+        <td>volume</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">15.2558</td>
+        <td class="num">4.6529</td>
+        <td class="num">0.001042</td>
+        <td class="num">0.007434</td>
+      </tr>
+      <tr>
+        <td>lh-entorhinal</td>
+        <td>thickness</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">0.0117</td>
+        <td class="num">0.0253</td>
+        <td class="num">0.6443</td>
+        <td class="num">0.6443</td>
+      </tr>
+      <tr>
+        <td>rh-entorhinal</td>
+        <td>thickness</td>
+        <td class="num">34</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0177</td>
+        <td class="num">0.0333</td>
+        <td class="num">0.596</td>
+        <td class="num">0.6181</td>
+      </tr>
+      <tr>
+        <td>lh-parahippocampal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0455</td>
+        <td class="num">0.0340</td>
+        <td class="num">0.1812</td>
+        <td class="num">0.2713</td>
+      </tr>
+      <tr>
+        <td>rh-parahippocampal</td>
+        <td>thickness</td>
+        <td class="num">36</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0174</td>
+        <td class="num">0.0276</td>
+        <td class="num">0.5296</td>
+        <td class="num">0.5703</td>
+      </tr>
+      <tr>
+        <td>lh-inferiorparietal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0293</td>
+        <td class="num">0.0209</td>
+        <td class="num">0.1612</td>
+        <td class="num">0.2655</td>
+      </tr>
+      <tr>
+        <td>rh-inferiorparietal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0502</td>
+        <td class="num">0.0246</td>
+        <td class="num">0.04183</td>
+        <td class="num">0.1037</td>
+      </tr>
+      <tr>
+        <td>lh-precuneus</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0249</td>
+        <td class="num">0.0187</td>
+        <td class="num">0.1841</td>
+        <td class="num">0.2713</td>
+      </tr>
+      <tr>
+        <td>rh-precuneus</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0515</td>
+        <td class="num">0.0180</td>
+        <td class="num">0.004221</td>
+        <td class="num">0.0197</td>
+      </tr>
+      <tr>
+        <td>lh-posteriorcingulate</td>
+        <td>thickness</td>
+        <td class="num">36</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0290</td>
+        <td class="num">0.0270</td>
+        <td class="num">0.2834</td>
+        <td class="num">0.3606</td>
+      </tr>
+      <tr>
+        <td>rh-posteriorcingulate</td>
+        <td>thickness</td>
+        <td class="num">36</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0642</td>
+        <td class="num">0.0185</td>
+        <td class="num">0.000528</td>
+        <td class="num">0.007392</td>
+      </tr>
+      <tr>
+        <td>lh-middletemporal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0369</td>
+        <td class="num">0.0245</td>
+        <td class="num">0.1313</td>
+        <td class="num">0.2451</td>
+      </tr>
+      <tr>
+        <td>rh-middletemporal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0514</td>
+        <td class="num">0.0236</td>
+        <td class="num">0.02952</td>
+        <td class="num">0.08564</td>
+      </tr>
+      <tr>
+        <td>lh-superiorfrontal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0879</td>
+        <td class="num">0.0251</td>
+        <td class="num">0.0004638</td>
+        <td class="num">0.007392</td>
+      </tr>
+      <tr>
+        <td>rh-superiorfrontal</td>
+        <td>thickness</td>
+        <td class="num">37</td>
+        <td class="num">15</td>
+        <td>
+<span class="badge ok">yes</span>
+        </td>
+        <td class="num">-0.0305</td>
+        <td class="num">0.0260</td>
+        <td class="num">0.2417</td>
+        <td class="num">0.3384</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub">
+    Estimate and p-value are for the <code>time &times; diagnosis</code>
+    interaction — the primary hypothesis. Hemispheres are independent tests and
+    are counted in the multiplicity family.
+  </p>
+
+  <h3>Secondary families — exploratory</h3>
+  <div class="callout warn">
+    <strong>Each secondary effect is its own family, corrected separately.</strong>
+    BH-FDR is applied within each column below independently, never across
+    them and never together with the primary family. A <em>q</em> here is not
+    comparable to a <em>q</em> in the primary table, and none of these tests
+    are part of the declared hypothesis (§2.5.3).
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th rowspan="2">Region</th>
+        <th colspan="3"><code>time</code><br>
+          <span class="sub">28 tests</span></th>
+        <th colspan="3"><code>dx_baseline[T.patient]</code><br>
+          <span class="sub">28 tests</span></th>
+        <th colspan="3"><code>age_baseline</code><br>
+          <span class="sub">28 tests</span></th>
+      </tr>
+      <tr>
+        <th class="num">Estimate</th><th class="num">p</th><th class="num">q</th>
+        <th class="num">Estimate</th><th class="num">p</th><th class="num">q</th>
+        <th class="num">Estimate</th><th class="num">p</th><th class="num">q</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>lh-hippocampus</td>
+        <td class="num">39.1429</td>
+        <td class="num">0.1386</td>
+        <td class="num">0.5636</td>
+        <td class="num">-171.3148</td>
+        <td class="num">0.4137</td>
+        <td class="num">0.9081</td>
+        <td class="num">-9.3482</td>
+        <td class="num">0.4973</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>rh-hippocampus</td>
+        <td class="num">-3.6687</td>
+        <td class="num">0.9033</td>
+        <td class="num">0.9368</td>
+        <td class="num">-139.8165</td>
+        <td class="num">0.4037</td>
+        <td class="num">0.9081</td>
+        <td class="num">1.0439</td>
+        <td class="num">0.9096</td>
+        <td class="num">0.9716</td>
+      </tr>
+      <tr>
+        <td>lh-amygdala</td>
+        <td class="num">-14.8706</td>
+        <td class="num">0.3477</td>
+        <td class="num">0.7171</td>
+        <td class="num">17.8933</td>
+        <td class="num">0.848</td>
+        <td class="num">0.9292</td>
+        <td class="num">7.1250</td>
+        <td class="num">0.1984</td>
+        <td class="num">0.6824</td>
+      </tr>
+      <tr>
+        <td>rh-amygdala</td>
+        <td class="num">-4.2420</td>
+        <td class="num">0.7494</td>
+        <td class="num">0.8444</td>
+        <td class="num">39.3125</td>
+        <td class="num">0.4578</td>
+        <td class="num">0.9081</td>
+        <td class="num">3.5055</td>
+        <td class="num">0.2924</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>lh-thalamus</td>
+        <td class="num">-27.9583</td>
+        <td class="num">0.7165</td>
+        <td class="num">0.8444</td>
+        <td class="num">535.6228</td>
+        <td class="num">0.1453</td>
+        <td class="num">0.9081</td>
+        <td class="num">30.1990</td>
+        <td class="num">0.1123</td>
+        <td class="num">0.5307</td>
+      </tr>
+      <tr>
+        <td>rh-thalamus</td>
+        <td class="num">-72.3824</td>
+        <td class="num">0.1373</td>
+        <td class="num">0.5636</td>
+        <td class="num">82.2294</td>
+        <td class="num">0.7625</td>
+        <td class="num">0.9149</td>
+        <td class="num">12.3799</td>
+        <td class="num">0.4701</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>lh-caudate</td>
+        <td class="num">13.8645</td>
+        <td class="num">0.6552</td>
+        <td class="num">0.8444</td>
+        <td class="num">-123.8405</td>
+        <td class="num">0.3785</td>
+        <td class="num">0.9081</td>
+        <td class="num">-7.6201</td>
+        <td class="num">0.2193</td>
+        <td class="num">0.6824</td>
+      </tr>
+      <tr>
+        <td>rh-caudate</td>
+        <td class="num">-11.3130</td>
+        <td class="num">0.686</td>
+        <td class="num">0.8444</td>
+        <td class="num">-147.2137</td>
+        <td class="num">0.5351</td>
+        <td class="num">0.9149</td>
+        <td class="num">-5.8347</td>
+        <td class="num">0.7179</td>
+        <td class="num">0.9453</td>
+      </tr>
+      <tr>
+        <td>lh-putamen</td>
+        <td class="num">-42.3590</td>
+        <td class="num">0.189</td>
+        <td class="num">0.6414</td>
+        <td class="num">112.8407</td>
+        <td class="num">0.6538</td>
+        <td class="num">0.9149</td>
+        <td class="num">-0.5496</td>
+        <td class="num">0.9716</td>
+        <td class="num">0.9716</td>
+      </tr>
+      <tr>
+        <td>rh-putamen</td>
+        <td class="num">-43.8346</td>
+        <td class="num">0.2062</td>
+        <td class="num">0.6414</td>
+        <td class="num">-213.3048</td>
+        <td class="num">0.335</td>
+        <td class="num">0.9081</td>
+        <td class="num">1.8590</td>
+        <td class="num">0.8935</td>
+        <td class="num">0.9716</td>
+      </tr>
+      <tr>
+        <td>lh-lateral-ventricle</td>
+        <td class="num">55.0485</td>
+        <td class="num">0.5258</td>
+        <td class="num">0.8444</td>
+        <td class="num">428.6878</td>
+        <td class="num">0.4865</td>
+        <td class="num">0.9081</td>
+        <td class="num">77.0624</td>
+        <td class="num">0.007838</td>
+        <td class="num">0.2195</td>
+      </tr>
+      <tr>
+        <td>rh-lateral-ventricle</td>
+        <td class="num">76.9675</td>
+        <td class="num">0.4509</td>
+        <td class="num">0.789</td>
+        <td class="num">437.2729</td>
+        <td class="num">0.4709</td>
+        <td class="num">0.9081</td>
+        <td class="num">62.9244</td>
+        <td class="num">0.08821</td>
+        <td class="num">0.5307</td>
+      </tr>
+      <tr>
+        <td>lh-inferior-lateral-ventricle</td>
+        <td class="num">3.0809</td>
+        <td class="num">0.5448</td>
+        <td class="num">0.8444</td>
+        <td class="num">7.8114</td>
+        <td class="num">0.6534</td>
+        <td class="num">0.9149</td>
+        <td class="num">0.8115</td>
+        <td class="num">0.4895</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>rh-inferior-lateral-ventricle</td>
+        <td class="num">0.5423</td>
+        <td class="num">0.894</td>
+        <td class="num">0.9368</td>
+        <td class="num">37.2164</td>
+        <td class="num">0.04445</td>
+        <td class="num">0.9081</td>
+        <td class="num">2.2244</td>
+        <td class="num">0.03108</td>
+        <td class="num">0.4351</td>
+      </tr>
+      <tr>
+        <td>lh-entorhinal</td>
+        <td class="num">-0.0357</td>
+        <td class="num">0.06224</td>
+        <td class="num">0.5636</td>
+        <td class="num">-0.1025</td>
+        <td class="num">0.4211</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0034</td>
+        <td class="num">0.674</td>
+        <td class="num">0.9437</td>
+      </tr>
+      <tr>
+        <td>rh-entorhinal</td>
+        <td class="num">-0.0426</td>
+        <td class="num">0.08804</td>
+        <td class="num">0.5636</td>
+        <td class="num">-0.1176</td>
+        <td class="num">0.3112</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0017</td>
+        <td class="num">0.8102</td>
+        <td class="num">0.9453</td>
+      </tr>
+      <tr>
+        <td>lh-parahippocampal</td>
+        <td class="num">-0.0112</td>
+        <td class="num">0.6175</td>
+        <td class="num">0.8444</td>
+        <td class="num">-0.0338</td>
+        <td class="num">0.7632</td>
+        <td class="num">0.9149</td>
+        <td class="num">0.0023</td>
+        <td class="num">0.7467</td>
+        <td class="num">0.9453</td>
+      </tr>
+      <tr>
+        <td>rh-parahippocampal</td>
+        <td class="num">-0.0200</td>
+        <td class="num">0.3519</td>
+        <td class="num">0.7171</td>
+        <td class="num">0.0905</td>
+        <td class="num">0.3888</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0046</td>
+        <td class="num">0.5077</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>lh-inferiorparietal</td>
+        <td class="num">-0.0369</td>
+        <td class="num">0.02495</td>
+        <td class="num">0.5636</td>
+        <td class="num">0.1223</td>
+        <td class="num">0.3331</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0155</td>
+        <td class="num">0.05149</td>
+        <td class="num">0.4806</td>
+      </tr>
+      <tr>
+        <td>rh-inferiorparietal</td>
+        <td class="num">0.0013</td>
+        <td class="num">0.9494</td>
+        <td class="num">0.9494</td>
+        <td class="num">-0.0396</td>
+        <td class="num">0.6644</td>
+        <td class="num">0.9149</td>
+        <td class="num">-0.0039</td>
+        <td class="num">0.5132</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>lh-precuneus</td>
+        <td class="num">-0.0170</td>
+        <td class="num">0.2559</td>
+        <td class="num">0.6744</td>
+        <td class="num">-0.0436</td>
+        <td class="num">0.6996</td>
+        <td class="num">0.9149</td>
+        <td class="num">0.0047</td>
+        <td class="num">0.5179</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>rh-precuneus</td>
+        <td class="num">0.0159</td>
+        <td class="num">0.2649</td>
+        <td class="num">0.6744</td>
+        <td class="num">0.0235</td>
+        <td class="num">0.7842</td>
+        <td class="num">0.9149</td>
+        <td class="num">0.0048</td>
+        <td class="num">0.3708</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>lh-posteriorcingulate</td>
+        <td class="num">-0.0182</td>
+        <td class="num">0.3841</td>
+        <td class="num">0.7171</td>
+        <td class="num">0.0922</td>
+        <td class="num">0.4639</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0063</td>
+        <td class="num">0.3979</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>rh-posteriorcingulate</td>
+        <td class="num">0.0225</td>
+        <td class="num">0.05822</td>
+        <td class="num">0.5636</td>
+        <td class="num">0.0007</td>
+        <td class="num">0.9929</td>
+        <td class="num">0.9929</td>
+        <td class="num">0.0010</td>
+        <td class="num">0.8103</td>
+        <td class="num">0.9453</td>
+      </tr>
+      <tr>
+        <td>lh-middletemporal</td>
+        <td class="num">-0.0098</td>
+        <td class="num">0.6206</td>
+        <td class="num">0.8444</td>
+        <td class="num">0.0155</td>
+        <td class="num">0.8961</td>
+        <td class="num">0.9292</td>
+        <td class="num">-0.0003</td>
+        <td class="num">0.9671</td>
+        <td class="num">0.9716</td>
+      </tr>
+      <tr>
+        <td>rh-middletemporal</td>
+        <td class="num">-0.0161</td>
+        <td class="num">0.3731</td>
+        <td class="num">0.7171</td>
+        <td class="num">-0.0734</td>
+        <td class="num">0.4834</td>
+        <td class="num">0.9081</td>
+        <td class="num">0.0108</td>
+        <td class="num">0.1137</td>
+        <td class="num">0.5307</td>
+      </tr>
+      <tr>
+        <td>lh-superiorfrontal</td>
+        <td class="num">0.0060</td>
+        <td class="num">0.7539</td>
+        <td class="num">0.8444</td>
+        <td class="num">0.0680</td>
+        <td class="num">0.5695</td>
+        <td class="num">0.9149</td>
+        <td class="num">-0.0049</td>
+        <td class="num">0.53</td>
+        <td class="num">0.781</td>
+      </tr>
+      <tr>
+        <td>rh-superiorfrontal</td>
+        <td class="num">-0.0305</td>
+        <td class="num">0.1409</td>
+        <td class="num">0.5636</td>
+        <td class="num">0.0185</td>
+        <td class="num">0.8775</td>
+        <td class="num">0.9292</td>
+        <td class="num">0.0088</td>
+        <td class="num">0.1974</td>
+        <td class="num">0.6824</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Harmonized vs unharmonized — sensitivity analysis</h3>
+  <div class="callout">
+    <strong>Not applicable.</strong> Harmonization changed no values in this
+    run, so the two arms are the same fit reported twice.
+  </div>
+
+  <div class="callout">
+    <ul class="tight">
+<li>Harmonization changed no values, so both arms are the same run. No sensitivity comparison is possible and none should be read from the table below.</li>    </ul>
+  </div>
+
+  <div class="callout">
+    <ul class="tight">
+<li>Primary family: the time:dx_baseline[T.patient] coefficient across 28 regional tests (14 structures x 2 hemispheres = 28). BH-FDR at alpha=0.05 is applied within this family and only this family; 28 tests carried a p-value and were corrected.</li><li>Secondary families, each corrected separately and labelled exploratory (§2.5.3): time (28 tests), dx_baseline[T.patient] (28 tests), age_baseline (28 tests). A secondary q-value must never be read as if it belonged to the primary family.</li>    </ul>
+  </div>
+
+  <h2>6. Limitations</h2>
+
+
+  <div class="lim">
+    <strong>Secondary families are exploratory, not hypotheses</strong>
+    <p>
+      Only the <code>time &times; diagnosis</code> interaction is a declared
+      hypothesis. The main effects of <code>time</code>,
+      <code>dx_baseline</code>, and <code>age_baseline</code> are each
+      corrected within their own family and reported for completeness; they
+      were not pre-specified, and reading a small <em>q</em> among them as a
+      finding is exactly the multiplicity error the family declaration exists
+      to prevent.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>pybids is not a derivatives parser</strong>
+    <p>
+      pybids indexes raw BIDS well, but its BIDS-Derivatives support is
+      partial, and FreeSurfer's native subject-directory output is not
+      BIDS-organized at all. morphline uses a purpose-built resolver for
+      FreeSurfer conventions and reserves pybids for raw layout traversal
+      inside adapters.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Harmonized results are sensitivity analysis, not inference</strong>
+    <p>
+      Running harmonized and unharmonized models shows how conclusions depend
+      on the harmonization assumption. It does not establish which is correct.
+      Where scanner is confounded with time, the biological longitudinal
+      effect and the scanner effect are not identifiable from the observed
+      data alone — a property of the study design, not a deficiency in the
+      software.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Missingness is assumed missing-at-random</strong>
+    <p>
+      Mixed-effects models use all available observations and handle
+      unbalanced longitudinal designs naturally, but validity rests on a MAR
+      assumption. That assumption is questionable in aging cohorts, where
+      dropout can be caused by the disease progression under study, and where
+      QC failure is plausibly associated with atrophy severity and motion.
+      v1 does not attempt MNAR modeling — no pattern-mixture models, selection
+      models, or joint dropout modeling.
+    </p>
+  </div>
+
+  <div class="lim">
+    <strong>Synthetic data only</strong>
+    <p>
+      These results come from synthetic fixtures with injected ground truth.
+      That validates <em>statistical recovery</em> — whether the methods
+      recover known truth — and cannot validate that the parser handles real
+      headers and real metadata. Those are different questions, and both are
+      needed. Real-data integration is a later milestone.
+    </p>
+  </div>
+
+  <footer>
+    Generated by morphline 0.1.0. This report is
+    self-contained: it fetches no external assets and can be archived or read
+    offline.
+  </footer>
+
+</div>
+</body>
+</html>

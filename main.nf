@@ -68,8 +68,15 @@ workflow {
 
     PARSE_SUBJECT(ch_subjects, ch_config, ch_dataset)
 
-    // Gather PATHS, not tables. The consuming process does the reading.
-    COLLECT_CANONICAL(PARSE_SUBJECT.out.parquet.map { _id, pq -> pq }.collect(), ch_config)
+    // Gather PATHS, not tables. The consuming process does the reading. The
+    // ingest sidecars are gathered alongside the observations: they fan out
+    // per subject and the accounting and provenance stages need them merged.
+    COLLECT_CANONICAL(
+        PARSE_SUBJECT.out.parquet.map { _id, pq -> pq }.collect(),
+        PARSE_SUBJECT.out.counters.map { _id, c -> c }.collect(),
+        PARSE_SUBJECT.out.observed_versions.map { _id, v -> v }.collect(),
+        ch_config,
+    )
 
     QC(COLLECT_CANONICAL.out.parquet, ch_config)
     HARMONIZE(QC.out.parquet, ch_config)
@@ -79,6 +86,7 @@ workflow {
 
     ACCOUNTING(
         COLLECT_CANONICAL.out.parquet,
+        COLLECT_CANONICAL.out.counters,
         PARSE_SUBJECT.out.failures.map { _id, f -> f }.collect(),
         QC.out.parquet,
         MODEL.out.parquet,
@@ -90,6 +98,7 @@ workflow {
         ACCOUNTING.out.funnel,
         ACCOUNTING.out.json,
         QC.out.parquet,
+        COLLECT_CANONICAL.out.observed_versions,
         HARMONIZE.out.parquet,
         HARMONIZE.out.json,
         MODEL.out.parquet,

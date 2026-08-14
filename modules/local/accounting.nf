@@ -8,8 +8,14 @@ process ACCOUNTING {
     tag 'accounting'
     publishDir "${params.outdir}", mode: 'copy', pattern: '*.{parquet,json}'
 
+    // ingest_counters.json is staged but never named in the command: `morphline
+    // account` looks for it beside --observations. Without it the stage falls
+    // back to re-deriving discovery counts, which is exactly the "never derived"
+    // rule this funnel exists to uphold — and it fails silently, because on
+    // clean inputs the derived numbers agree.
     input:
     path observations
+    path ingest_counters
     path failures
     path qc_observations
     path model_results

@@ -71,6 +71,10 @@ Nextflow channels carry **file paths, never dataframes**. Gathering steps `colle
 
 [tests/test_nextflow_parity.py](tests/test_nextflow_parity.py) drives the staged CLI as subprocesses in the DAG's order and asserts the artifacts match the in-process run. Nextflow itself is not runnable on the arm64 dev machine, so if parity passes and the Nextflow run still fails, the bug is in workflow wiring.
 
+**But parity can pass while Nextflow produces different *content*, and that is the harder failure.** The harness gives each subject its own directory; Nextflow stages every per-subject file into *one* work dir. Any stage that locates a file by convention rather than by argument — `morphline account` reading `ingest_counters.json` beside `--observations`, `morphline provenance` reading `ingest_versions.json` beside its own — therefore finds it under the harness and not under Nextflow, and both degrade *silently* rather than failing. The rule that follows: **a file a stage discovers by convention must still be a declared process input**, and anything that fans out per subject must be subject-prefixed or it collides on staging. `morphline collect` takes explicit `--counters`/`--versions` for exactly this reason, falling back to parent-directory derivation only for the one-directory-per-input case. `test_collect_gathers_sidecars_staged_into_one_directory` pins the flat layout, since no other test models it.
+
+Only `-profile docker` needs the amd64 image. **`-profile local` sets `process.container = null` and runs the whole DAG on arm64** against the working venv — it needs only a JDK, and it is the fastest way to find a wiring bug without a CI round trip.
+
 ### Data accounting
 
 `raw files → parsed files → canonical observations → QC-passing → modeled`. Every boundary reports what it lost and attributes each drop to a cause; unexplained loss is a bug. `morphline account` and `morphline run` **exit non-zero** when the funnel does not reconcile. Loss counters are tracked exactly at ingestion (never derived as a remainder — a catch-all would make the funnel reconcile by construction) and travel to the accounting stage via `ingest_counters.json`.

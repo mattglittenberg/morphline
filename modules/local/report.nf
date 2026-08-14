@@ -11,10 +11,15 @@ process REPORT {
     // stage writes to one shared outdir, which is exactly the difference this
     // process has to bridge. provenance.json is the only one not staged: the
     // preceding command writes it here.
+    // ingest_versions.json is likewise unnamed in the command: `morphline
+    // provenance` looks for it beside --observations, and without it the block
+    // reports no version declarations for inputs whose declaration morphline
+    // cannot parse — FreeSurfer 5.1 being precisely that case.
     input:
     path accounting_funnel
     path accounting_json
     path qc_observations
+    path ingest_versions
     path harmonized
     path harmonization_json
     path model_results

@@ -14,9 +14,14 @@ FROM python:3.12-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 
+# The venv is built at the path it will occupy at runtime, not at /build/.venv.
+# Console-script shebangs are absolute, so a venv built elsewhere and copied
+# points at an interpreter that does not exist — and `sh` reports that missing
+# interpreter as "morphline: not found", which reads like a PATH bug and is not.
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=never
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/opt/morphline/.venv
 
 WORKDIR /build
 
@@ -24,11 +29,14 @@ WORKDIR /build
 # that resolves and installs the entire scientific stack.
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --no-editable
 
+# --no-editable puts the package inside site-packages. The default editable
+# install writes a .pth pointing at /build/src, which the runtime stage never
+# copies, so the image would import nothing.
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
 
 # ---- runtime ---------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
@@ -36,7 +44,7 @@ FROM python:3.12-slim-bookworm AS runtime
 LABEL org.opencontainers.image.title="morphline" \
       org.opencontainers.image.description="BIDS-aware longitudinal neuroimaging derivatives pipeline" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/OWNER/morphline"
+      org.opencontainers.image.source="https://github.com/mattglittenberg/morphline"
 
 # procps supplies `ps`, which Nextflow's task wrapper uses to collect trace
 # metrics. Without it every task logs a warning and the trace is incomplete.
@@ -46,7 +54,7 @@ RUN apt-get update \
 
 RUN useradd --create-home --uid 1000 morphline
 
-COPY --from=builder --chown=morphline:morphline /build/.venv /opt/morphline/.venv
+COPY --from=builder --chown=morphline:morphline /opt/morphline/.venv /opt/morphline/.venv
 
 ENV PATH="/opt/morphline/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

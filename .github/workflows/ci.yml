@@ -10,6 +10,10 @@ on:
 
 env:
   UV_VERSION: "0.5.11"
+  # Pinned for the same reason ruff and uv are. `get.nextflow.io` serves the
+  # latest release, so an unpinned install silently moved the language level
+  # and a top-level `workflow.onComplete` stopped compiling.
+  NXF_VER: "26.04.6"
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 concurrency:

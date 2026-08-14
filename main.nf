@@ -106,11 +106,3 @@ workflow {
 
     ch_versions.collectFile(name: 'versions.yml', storeDir: "${params.outdir}/pipeline_info")
 }
-
-workflow.onComplete {
-    log.info(
-        workflow.success
-            ? "\nmorphline completed. Report: ${params.outdir}/report.html\n"
-            : "\nmorphline failed: ${workflow.errorMessage}\n"
-    )
-}

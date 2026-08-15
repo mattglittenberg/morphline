@@ -1,0 +1,80 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  UV_VERSION: "0.5.11"
+
+# Deploys are serialised rather than cancelled: a cancelled deploy can leave
+# the Pages environment holding a half-published artifact.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish-report:
+    name: publish example report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+
+      # Regime A rather than config/test.yaml: both of test.yaml's sites sit
+      # below min_batch_size by design, so its sensitivity arm renders as not
+      # applicable and its batch table is empty. §5.3 wants the demo that
+      # shows recovery against injected truth.
+      - name: Generate the example report
+        run: uv run morphline run --config config/recovery.yaml --outdir site-build/
+
+      # §5.3: the published report is generated entirely from synthetic
+      # fixtures. Asserted rather than assumed, because pointing this job at a
+      # real-data config is a one-line change that nothing else would catch.
+      - name: Assert the report is synthetic
+        run: |
+          set -euo pipefail
+          test -s site-build/report.html
+          adapter=$(uv run python -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["run_parameters"]["dataset"]["adapter"])' \
+            site-build/provenance.json)
+          if [ "$adapter" != "synthetic" ]; then
+            echo "refusing to publish: adapter is '$adapter', expected 'synthetic'"
+            exit 1
+          fi
+
+      # A report that lost its charts still renders and still looks fine.
+      - name: Assert the charts survived
+        run: |
+          set -euo pipefail
+          charts=$(grep -c 'plotly-graph-div' site-build/report.html || true)
+          echo "charts embedded: $charts"
+          if [ "$charts" -lt 8 ]; then
+            echo "refusing to publish: expected at least 8 embedded charts"
+            exit 1
+          fi
+
+      - name: Assemble the site
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp site-build/report.html site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+      - id: deployment
+        uses: actions/deploy-pages@v4

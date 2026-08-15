@@ -6,6 +6,8 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+**→ [Read an example report](https://mattglittenberg.github.io/morphline/)** — a live run, regenerated from synthetic fixtures on every push to `main`. Provenance block, accounting funnel, QC summary, harmonization diagnostics, and all 28 model results.
+
 > **Status:** ingestion, accounting, QC, harmonization, and the longitudinal model are all implemented and validated. The model fits the full 28-test region set with primary and secondary FDR families corrected separately, a harmonized-vs-unharmonized sensitivity arm, and slope recovery bounded against injected truth. Release engineering is in progress; `v0.1.0` is the current tag.
 
 ---

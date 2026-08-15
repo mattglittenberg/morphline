@@ -25,6 +25,8 @@ from typing import Any
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from morphline.report.charts import build as build_charts
+from morphline.report.charts import theme_script
 from morphline.stages.model import PRIMARY_TERM, SECONDARY_TERMS
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "report" / "templates"
@@ -235,10 +237,25 @@ def render_report(inputs: ReportInputs) -> str:
         for f in fits
     ]
 
+    min_batch_size = (
+        (inputs.resolved_config.get("harmonization") or {}).get("min_batch_size")
+        if isinstance(inputs.resolved_config.get("harmonization"), dict)
+        else None
+    )
+    charts = build_charts(
+        accounting=accounting,
+        harmonization=harmonization,
+        model=inputs.model,
+        primary_term=PRIMARY_TERM,
+        min_batch_size=min_batch_size,
+    )
+
     return template.render(
         title=inputs.title,
         provenance=inputs.provenance,
         resolved_config=json.dumps(inputs.resolved_config, indent=2, default=str),
+        charts=charts,
+        theme_script=theme_script() if charts else "",
         funnel=accounting.get("funnel", []),
         reconciliation_errors=accounting.get("reconciliation_errors", []),
         parse_failures=accounting.get("parse_failures_by_code", {}),

@@ -52,6 +52,8 @@
              background: var(--panel); margin: .75rem 0; font-size: .9rem; }
   .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
   .callout.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+  figure.chart { margin: .75rem 0 1.25rem; }
+  figure.chart .js-plotly-plot { width: 100%; }
   .funnel-bar { height: 1.35rem; background: var(--accent); border-radius: 3px; min-width: 2px; }
   pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
         padding: .9rem; overflow-x: auto; font-size: .78rem; line-height: 1.45; }
@@ -127,6 +129,9 @@
 
   {% set max_count = funnel | map(attribute='count') | max %}
   <div class="scroll">
+{% if charts.get("funnel") %}
+  <figure class="chart">{{ charts["funnel"] | safe }}</figure>
+{% endif %}
   <table>
     <thead>
       <tr>
@@ -168,6 +173,9 @@
 
   {% if missingness %}
   <h3>Missingness by cause</h3>
+{% if charts.get("missingness") %}
+  <figure class="chart">{{ charts["missingness"] | safe }}</figure>
+{% endif %}
   <table>
     <thead><tr><th>Cause</th><th class="num">Sessions</th></tr></thead>
     <tbody>
@@ -179,6 +187,9 @@
   {% endif %}
 
   <h3>Completers vs non-completers</h3>
+{% if charts.get("completer_smd") %}
+  <figure class="chart">{{ charts["completer_smd"] | safe }}</figure>
+{% endif %}
   {% if not completers.get("applicable") %}
   <div class="callout">
     <strong>Not applicable.</strong> {{ completers.get("reason", "no comparison was run") }}.
@@ -296,6 +307,9 @@
 
   {% if batch_sizes %}
   <h3>Batch sizes</h3>
+{% if charts.get("batch_sizes") %}
+  <figure class="chart">{{ charts["batch_sizes"] | safe }}</figure>
+{% endif %}
   <table>
     <thead><tr><th>Site</th><th class="num">Subjects</th><th class="num">Observations</th></tr></thead>
     <tbody>
@@ -328,6 +342,12 @@
     into an exclusion list. No check here can distinguish segmentation failure
     from biology, and none of them claims to.
   </div>
+{% if charts.get("qc_status") %}
+  <figure class="chart">{{ charts["qc_status"] | safe }}</figure>
+{% endif %}
+{% if charts.get("qc_flags") %}
+  <figure class="chart">{{ charts["qc_flags"] | safe }}</figure>
+{% endif %}
   {% if qc_summary and qc_summary.by_status %}
   <table>
     <thead><tr><th>Status</th><th class="num">Observations</th></tr></thead>
@@ -363,6 +383,9 @@
 
   {% if confound_crosstab %}
   <h3>Site &times; time-from-baseline crosstab</h3>
+{% if charts.get("confound") %}
+  <figure class="chart">{{ charts["confound"] | safe }}</figure>
+{% endif %}
   <div class="scroll">{{ confound_crosstab | safe }}</div>
   {% endif %}
 
@@ -517,6 +540,9 @@
     <dt>convergence rate</dt><dd>{{ "%.0f%%"|format(100 * model.convergence_rate) }}</dd>
     <dt>modeled observations</dt><dd>{{ model.n_modeled_observations }}</dd>
   </dl>
+{% if charts.get("forest") %}
+  <figure class="chart">{{ charts["forest"] | safe }}</figure>
+{% endif %}
 
   <div class="scroll">
   <table>
@@ -594,6 +620,9 @@
   </div>
 
   <h3>Harmonized vs unharmonized — sensitivity analysis</h3>
+{% if charts.get("sensitivity") %}
+  <figure class="chart">{{ charts["sensitivity"] | safe }}</figure>
+{% endif %}
   {% if not sensitivity %}
   <div class="callout">
     <strong>Not run.</strong> The model was fitted on one arm only, so there is
@@ -752,5 +781,6 @@
   </footer>
 
 </div>
+{{ theme_script | safe }}
 </body>
 </html>

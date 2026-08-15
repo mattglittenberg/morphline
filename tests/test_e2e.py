@@ -7,6 +7,7 @@ external data present, and the report must carry a complete provenance block.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -54,10 +55,24 @@ def test_funnel_actually_had_losses_to_attribute(run_output: object) -> None:
 
 
 def test_report_is_self_contained(run_output: object) -> None:
-    """No external asset fetches — the report must survive being archived."""
+    """No external asset fetches — the report must survive being archived.
+
+    Asserted against *references that cause a fetch*, not against the substring
+    ``http``. The inlined Plotly bundle legitimately contains XML namespace
+    identifiers (``http://www.w3.org/2000/svg``) and map-tile attribution URLs
+    for chart types this report never builds; neither is a request. A substring
+    check cannot tell those from a real one, and the version of this test that
+    tried made "self-contained" mean "contains no URL-shaped text", which is a
+    different and unmeetable claim.
+    """
     html = run_output.report_path.read_text(encoding="utf-8")  # type: ignore[attr-defined]
-    for pattern in ("http://", "https://cdn", "<script src=", 'link rel="stylesheet" href="http'):
-        assert pattern not in html, f"report fetches external asset: {pattern}"
+    fetching = re.findall(
+        r"""<script[^>]+\ssrc\s*=|<link[^>]+\shref\s*=\s*["']https?://"""
+        r"""|<img[^>]+\ssrc\s*=\s*["']https?://|url\(\s*["']?https?://""",
+        html,
+        flags=re.IGNORECASE,
+    )
+    assert not fetching, f"report fetches external assets: {fetching[:5]}"
 
 
 def test_report_carries_the_full_provenance_block(run_output: object) -> None:

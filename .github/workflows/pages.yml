@@ -37,8 +37,14 @@ jobs:
       # below min_batch_size by design, so its sensitivity arm renders as not
       # applicable and its batch table is empty. §5.3 wants the demo that
       # shows recovery against injected truth.
+      # Outputs go outside the checkout on purpose. `git_is_dirty()` is
+      # `git status --porcelain`, which counts untracked files, so writing the
+      # run into the working tree stamps the published report `dirty` — the
+      # one claim §2.8 exists to make, broken on the one report the public
+      # reads. A .gitignore entry would also work and would silently re-break
+      # the day someone tidies it up.
       - name: Generate the example report
-        run: uv run morphline run --config config/recovery.yaml --outdir site-build/
+        run: uv run morphline run --config config/recovery.yaml --outdir "$RUNNER_TEMP/site-build"
 
       # §5.3: the published report is generated entirely from synthetic
       # fixtures. Asserted rather than assumed, because pointing this job at a
@@ -46,12 +52,27 @@ jobs:
       - name: Assert the report is synthetic
         run: |
           set -euo pipefail
-          test -s site-build/report.html
+          test -s "$RUNNER_TEMP/site-build/report.html"
           adapter=$(uv run python -c \
             'import json,sys; print(json.load(open(sys.argv[1]))["run_parameters"]["dataset"]["adapter"])' \
-            site-build/provenance.json)
+            "$RUNNER_TEMP/site-build/provenance.json")
           if [ "$adapter" != "synthetic" ]; then
             echo "refusing to publish: adapter is '$adapter', expected 'synthetic'"
+            exit 1
+          fi
+
+      # §2.8's claim is that a reader holding only the HTML can reconstruct the
+      # run, and a dirty flag retracts it. Asserted because the first published
+      # report carried one: the outputs were landing inside the checkout.
+      - name: Assert the run was made from a clean checkout
+        run: |
+          set -euo pipefail
+          dirty=$(uv run python -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["git_dirty"])' \
+            "$RUNNER_TEMP/site-build/provenance.json")
+          if [ "$dirty" != "False" ]; then
+            echo "refusing to publish: provenance reports a dirty working tree"
+            git status --porcelain
             exit 1
           fi
 
@@ -59,7 +80,7 @@ jobs:
       - name: Assert the charts survived
         run: |
           set -euo pipefail
-          charts=$(grep -c 'plotly-graph-div' site-build/report.html || true)
+          charts=$(grep -c 'plotly-graph-div' "$RUNNER_TEMP/site-build/report.html" || true)
           echo "charts embedded: $charts"
           if [ "$charts" -lt 8 ]; then
             echo "refusing to publish: expected at least 8 embedded charts"
@@ -70,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          cp site-build/report.html site/index.html
+          cp "$RUNNER_TEMP/site-build/report.html" site/index.html
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

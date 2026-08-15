@@ -98,3 +98,8 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["src/morphline"]
+# The combined number comes from two CI jobs on two machines. Without relative
+# paths, `coverage combine` treats the same module under two absolute paths as
+# two files and reports the union — a total that is wrong in the safe-looking
+# direction, since it only ever rises.
+relative_files = true

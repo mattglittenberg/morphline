@@ -47,8 +47,8 @@ jobs:
       - run: uv run mypy --strict src/
 
   # Split from `recovery` so the fast signal stays fast. Both are blocking.
-  # Coverage now comes from two jobs and each prints a partial number, which is
-  # harmless while it is ungated — week 6's badge will need `coverage combine`.
+  # Each job prints its own partial number; the real one is the `coverage` job
+  # below, which combines the two data files. Still ungated by design.
   test:
     name: test
     runs-on: ubuntu-latest
@@ -64,6 +64,18 @@ jobs:
       # conditions: those tests need either an extra or an external dataset, and
       # a job that passes only because everything skipped is not a signal.
       - run: uv run pytest -v -m "not slow and not optional" --cov=src/morphline --cov-report=term-missing
+        env:
+          COVERAGE_FILE: .coverage.fast
+
+      # `include-hidden-files` is required: upload-artifact v4 skips dotfiles by
+      # default, so without it the artifact uploads empty and the coverage job
+      # combines nothing while still reporting a number.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-fast
+          path: .coverage.fast
+          include-hidden-files: true
+          retention-days: 1
 
   # The statistical recovery suites: model slope recovery and the four §2.3.2
   # harmonization criteria over larger fixture trees. These are the tests that
@@ -79,6 +91,74 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - run: uv run pytest -v -m slow --durations=10
+        env:
+          COVERAGE_FILE: .coverage.slow
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-slow
+          path: .coverage.slow
+          include-hidden-files: true
+          retention-days: 1
+
+  # The combined number, because neither test job can see the other's data.
+  # Measured, the combine barely moves it: the slow suite uniquely covers 2
+  # statements (harmonize.py 311 and 442), so 86% either way. That is the
+  # honest reading — the recovery tests earn their place by what they assert
+  # about recovered truth, not by the lines they touch, which is the same
+  # reason this number does not gate.
+  coverage:
+    name: coverage
+    needs: [test, recovery]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      # Deliberately no --cov-fail-under: the argument for this suite is the
+      # statistical recovery tests, not a percentage, and a floor rewards tests
+      # that touch lines over tests that check behaviour.
+      - name: Combine and report
+        id: cov
+        run: |
+          set -euo pipefail
+          ls -la .coverage.*
+          uv run coverage combine .coverage.fast .coverage.slow
+          uv run coverage report | tee coverage.txt
+          pct=$(uv run coverage json -o - --quiet | uv run python -c \
+            'import json,sys; print(round(json.load(sys.stdin)["totals"]["percent_covered"]))')
+          echo "pct=$pct" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Coverage: ${pct}%"
+            echo
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Fork PRs cannot see secrets, and a badge that silently stops updating is
+      # worse than one that is obviously absent — so it publishes only from main.
+      - name: Publish the badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ vars.COVERAGE_GIST_ID }}
+          filename: morphline-coverage.json
+          label: coverage
+          message: ${{ steps.cov.outputs.pct }}%
+          valColorRange: ${{ steps.cov.outputs.pct }}
+          minColorRange: 50
+          maxColorRange: 90
 
   # Checks the in-repo ComBat against neuroCombat, which is the evidence behind
   # Build.md deviation 1. Its own job because it needs an optional extra that

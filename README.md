@@ -3,6 +3,7 @@
 **A BIDS-aware longitudinal neuroimaging derivatives pipeline.** It ingests FreeSurfer `.stats` output, accounts for every observation it gains and loses, quality-controls it, harmonizes across scanners, fits longitudinal mixed-effects models, and emits a self-contained HTML report you could reconstruct the entire run from.
 
 [![CI](https://github.com/mattglittenberg/morphline/actions/workflows/ci.yml/badge.svg)](https://github.com/mattglittenberg/morphline/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/mattglittenberg/fb1c6bf9d45979c62215355cbd4aa39b/raw/morphline-coverage.json)](https://github.com/mattglittenberg/morphline/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -222,7 +223,7 @@ uv run --extra combat-xcheck pytest -m optional   # the neuroCombat cross-check
 
 Four run configs, all exercised: `config/test.yaml` (tiny, CI), `config/recovery.yaml` (regime A, recovery suite), `config/confounded.yaml` (regime B, site confounded with time), `config/abide.yaml` (real data). Only the last needs external data.
 
-CI runs eight jobs — `lint`, `types`, `test`, `recovery`, `xcheck`, `e2e`, `nf`, `publish` — and the Nextflow job is gating, not advisory.
+CI runs nine jobs — `lint`, `types`, `test`, `recovery`, `xcheck`, `coverage`, `e2e`, `nf`, `publish` — and the Nextflow job is gating, not advisory. Coverage is combined across the `test` and `recovery` jobs and published, but deliberately not gated: the argument for this suite is the statistical recovery tests, not a percentage.
 
 ## License
 
